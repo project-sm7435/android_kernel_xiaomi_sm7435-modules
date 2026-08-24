@@ -187,7 +187,10 @@ static const char *cam_debug_tag_name[CAM_TYPE_MAX] = {
  *
  * @return    :  If there is no error, it will return 0
  */
-int cam_debug_hw_trigger(unsigned int module_id, bool status);
+static inline int cam_debug_hw_trigger(unsigned int module_id, bool status)
+{
+	return 0;
+}
 /* xiaomi add hw trigger - end */
 
 #define ___CAM_LOG_TAG_NAME(tag)                     \
