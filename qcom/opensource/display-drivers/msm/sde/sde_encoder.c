@@ -265,69 +265,6 @@ static void _sde_encoder_control_fal10_veto(struct drm_encoder *drm_enc, bool ve
 	}
 }
 
-static void _sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
-{
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	struct msm_drm_private *priv;
-	struct sde_kms *sde_kms;
-	struct device *cpu_dev;
-	struct cpumask *cpu_mask = NULL;
-	int cpu = 0;
-	u32 cpu_dma_latency;
-
-	priv = drm_enc->dev->dev_private;
-	sde_kms = to_sde_kms(priv->kms);
-
-	if (!sde_kms->catalog || !sde_kms->catalog->perf.cpu_mask)
-		return;
-
-	cpu_dma_latency = sde_kms->catalog->perf.cpu_dma_latency;
-	cpumask_clear(&sde_enc->valid_cpu_mask);
-
-	if (sde_enc->mode_info.frame_rate > DEFAULT_FPS)
-		cpu_mask = to_cpumask(&sde_kms->catalog->perf.cpu_mask_perf);
-	if (!cpu_mask &&
-			sde_encoder_check_curr_mode(drm_enc,
-				MSM_DISPLAY_CMD_MODE))
-		cpu_mask = to_cpumask(&sde_kms->catalog->perf.cpu_mask);
-
-	if (!cpu_mask)
-		return;
-
-	for_each_cpu(cpu, cpu_mask) {
-		cpu_dev = get_cpu_device(cpu);
-		if (!cpu_dev) {
-			SDE_ERROR("%s: failed to get cpu%d device\n", __func__,
-					cpu);
-			return;
-		}
-		cpumask_set_cpu(cpu, &sde_enc->valid_cpu_mask);
-		dev_pm_qos_add_request(cpu_dev,
-				&sde_enc->pm_qos_cpu_req[cpu],
-				DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
-		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu_dma_latency, cpu);
-	}
-}
-
-static void _sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
-{
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	struct device *cpu_dev;
-	int cpu = 0;
-
-	for_each_cpu(cpu, &sde_enc->valid_cpu_mask) {
-		cpu_dev = get_cpu_device(cpu);
-		if (!cpu_dev) {
-			SDE_ERROR("%s: failed to get cpu%d device\n", __func__,
-					cpu);
-			continue;
-		}
-		dev_pm_qos_remove_request(&sde_enc->pm_qos_cpu_req[cpu]);
-		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu);
-	}
-	cpumask_clear(&sde_enc->valid_cpu_mask);
-}
-
 static bool _sde_encoder_is_autorefresh_enabled(
 		struct sde_encoder_virt *sde_enc)
 {
@@ -736,6 +673,7 @@ void sde_encoder_destroy(struct drm_encoder *drm_enc)
 
 	kfree(sde_enc->input_handler);
 	sde_enc->input_handler = NULL;
+	sde_enc->input_handler_registered = false;
 
 	kfree(sde_enc);
 }
@@ -1804,12 +1742,7 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 
 		/* enable all the irq */
 		sde_encoder_irq_control(drm_enc, true);
-
-		_sde_encoder_pm_qos_add_request(drm_enc);
-
 	} else {
-		_sde_encoder_pm_qos_remove_request(drm_enc);
-
 		/* disable all the irq */
 		sde_encoder_irq_control(drm_enc, false);
 
@@ -2004,7 +1937,6 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 
 	if (is_vid_mode && sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		sde_encoder_irq_control(drm_enc, true);
-		_sde_encoder_pm_qos_add_request(drm_enc);
 	} else {
 		/* enable all the clks and resources */
 		ret = _sde_encoder_resource_control_helper(drm_enc,
@@ -2027,6 +1959,8 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 end:
 	_sde_encoder_rc_kickoff_delayed(sde_enc, sw_event);
 
+	msm_idle_set_state(drm_enc, false);
+
 	mutex_unlock(&sde_enc->rc_lock);
 	return ret;
 }
@@ -2036,6 +1970,8 @@ static int _sde_encoder_rc_pre_stop(struct drm_encoder *drm_enc,
 {
 	/* cancel delayed off work, if any */
 	_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
+
+	msm_idle_set_state(drm_enc, true);
 
 	mutex_lock(&sde_enc->rc_lock);
 
@@ -2148,7 +2084,6 @@ static int _sde_encoder_rc_pre_modeset(struct drm_encoder *drm_enc,
 		SDE_ENC_RC_STATE_MODESET, SDE_EVTLOG_FUNC_CASE5);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_MODESET;
-	_sde_encoder_pm_qos_remove_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -2184,7 +2119,6 @@ static int _sde_encoder_rc_post_modeset(struct drm_encoder *drm_enc,
 			SDE_ENC_RC_STATE_ON, SDE_EVTLOG_FUNC_CASE6);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_ON;
-	_sde_encoder_pm_qos_add_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -2237,7 +2171,6 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 	 */
 	if (is_vid_mode) {
 		sde_encoder_irq_control(drm_enc, false);
-		_sde_encoder_pm_qos_remove_request(drm_enc);
 	} else {
 		/* disable all the clks and resources */
 		_sde_encoder_update_rsc_client(drm_enc, false);
@@ -2880,6 +2813,7 @@ static int _sde_encoder_input_handler(
 	input_handler->id_table = sde_input_ids;
 
 	sde_enc->input_handler = input_handler;
+	sde_enc->input_handler_registered = false;
 
 	return rc;
 }
@@ -3152,7 +3086,19 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 		return;
 	}
 
-	_sde_encoder_input_handler_register(drm_enc);
+	/* register input handler if not already registered */
+	if (sde_enc->input_handler && !sde_enc->input_handler_registered &&
+			!msm_is_mode_seamless_dms(msm_mode) &&
+		sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) &&
+			!msm_is_mode_seamless_dyn_clk(msm_mode)) {
+		_sde_encoder_input_handler_register(drm_enc);
+		if (!sde_enc->input_handler || !sde_enc->input_handler->private)
+			SDE_ERROR(
+			"input handler registration failed, rc = %d\n", ret);
+		else
+			sde_enc->input_handler_registered = true;
+	}
+
 	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 	if (!c_state) {
 		SDE_ERROR("invalid connector state\n");
@@ -3218,6 +3164,31 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
 }
 
+static void sde_encoder_wait_for_vsync_event_complete(struct sde_encoder_virt *sde_enc)
+{
+	u32 timeout_ms = DEFAULT_KICKOFF_TIMEOUT_MS;
+	int i, ret;
+
+	if (sde_enc->cur_master)
+		timeout_ms = sde_enc->cur_master->kickoff_timeout_ms;
+
+	ret = wait_event_timeout(sde_enc->vsync_event_wq,
+			!sde_enc->vblank_enabled,
+			msecs_to_jiffies(timeout_ms));
+	SDE_EVT32(timeout_ms, ret);
+
+	if (!ret) {
+		SDE_ERROR("vsync event complete timed out %d\n", ret);
+		SDE_EVT32(ret, SDE_EVTLOG_ERROR);
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+
+			if (phys && phys->ops.control_vblank_irq)
+				phys->ops.control_vblank_irq(phys, false);
+		}
+	}
+}
+
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -3271,7 +3242,11 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
 	}
 
-	_sde_encoder_input_handler_unregister(drm_enc);
+	if (sde_enc->input_handler && sde_enc->input_handler_registered &&
+		sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE)) {
+		_sde_encoder_input_handler_unregister(drm_enc);
+		sde_enc->input_handler_registered = false;
+	}
 
 	flush_delayed_work(&sde_conn->status_work);
 	/*
@@ -3303,6 +3278,13 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		sde_encoder_resource_control(drm_enc,
 				SDE_ENC_RC_EVENT_PRE_STOP);
 	}
+
+	/*
+	 * wait for any pending vsync timestamp event to sf
+	 * to ensure vbalnk irq is disabled.
+	 */
+	if (sde_enc->vblank_enabled)
+		sde_encoder_wait_for_vsync_event_complete(sde_enc);
 
 	/*
 	 * disable dce after the transfer is complete (for command mode)
@@ -3601,6 +3583,9 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 			phys->ops.control_vblank_irq(phys, enable);
 	}
 	sde_enc->vblank_enabled = enable;
+
+	if (!enable)
+		wake_up_all(&sde_enc->vsync_event_wq);
 }
 
 void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
@@ -5731,6 +5716,7 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 	}
 
 	mutex_init(&sde_enc->rc_lock);
+	init_waitqueue_head(&sde_enc->vsync_event_wq);
 	kthread_init_delayed_work(&sde_enc->delayed_off_work,
 			sde_encoder_off_work);
 	sde_enc->vblank_enabled = false;
