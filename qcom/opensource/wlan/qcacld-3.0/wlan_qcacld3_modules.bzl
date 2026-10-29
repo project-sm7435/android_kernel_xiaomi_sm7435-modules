@@ -16,15 +16,28 @@ _target_chipset_map = {
                 "adrastea",
         ],
         "parrot":[
+                "qca6490",
                 "qca6750",
                 "adrastea",
         ],
+        "lahaina":[
+                "qca6490",
+                "qca6750",
+                "wlan",
+        ],
+	"bengal":[
+		"wlan",
+	],
+	"malabar":[
+		"adrastea",
+	]
 }
 
 _chipset_hw_map = {
         "wlan"   : "ADRASTEA",
         "adrastea" : "ADRASTEA",
         "qca6750": "MOSELLE",
+        "qca6490": "LITHIUM",
 }
 
 _chipset_header_map = {
@@ -36,12 +49,19 @@ _chipset_header_map = {
         "api/hw/qca6750/v1",
         "cmn/hal/wifi3.0/qca6750",
     ],
+    "qca6490": [
+        "api/hw/qca6490/v1",
+        "cmn/hal/wifi3.0/qca6490",
+    ],
 }
 
 _hw_header_map = {
-        "ADRASTEA" : [
-        ],
-        "MOSELLE" : [
+    "ADRASTEA" : [
+    ],
+    "MOSELLE" : [
+        "cmn/hal/wifi3.0/li",
+    ],
+    "LITHIUM": [
         "cmn/hal/wifi3.0/li",
     ],
 }
@@ -1049,6 +1069,12 @@ _conditional_srcs = {
             "cmn/hif/src/qca6750def.c",
         ],
     },
+    "CONFIG_QCA6490_HEADERS_DEF": {
+        True: [
+            "cmn/hal/wifi3.0/qca6490/hal_6490.c",
+            "cmn/hif/src/qca6490def.c",
+        ],
+    },
     "CONFIG_OCB_UT_FRAMEWORK": {
         True: [
             "cmn/wmi/src/wmi_unified_ocb_ut.c",
@@ -1210,7 +1236,7 @@ _conditional_srcs = {
             "components/cmn_services/logging/src/wlan_connectivity_logging.c",
         ],
     },
-    "CONFIG_QCACLD_WLAN_CONNECTIVITY_DIAG_LOGGING": {
+    "CONFIG_QCACLD_WLAN_CONNECTIVITY_LOGGING": {
         True: [
             "core/hdd/src/wlan_hdd_connectivity_logging.c",
             "components/cmn_services/logging/src/wlan_connectivity_logging.c",
@@ -1865,6 +1891,11 @@ _conditional_srcs = {
             "core/hdd/src/wlan_hdd_sysfs_thermal_cfg.c",
         ],
     },
+    "CONFIG_WLAN_SYSFS_BITRATES": {
+        True: [
+            "core/hdd/src/wlan_hdd_sysfs_bitrates.c",
+        ],
+    },
     "CONFIG_WLAN_TRACEPOINTS": {
         True: [
             "cmn/qdf/linux/src/qdf_tracepoint.c",
@@ -2044,10 +2075,12 @@ def _define_module_for_target_variant_chipset(target, variant, chipset):
 
     srcs = native.glob(iglobs) + _fixed_srcs
 
-    if chipset == "wlan":
-        out = "{}.ko".format(chipset.replace("-", "_"))
+    if target == "monaco" or target == "blair" or target == "bengal":
+        out = "wlan.ko"
     else:
         out = "qca_cld3_{}.ko".format(chipset.replace("-", "_"))
+
+
     kconfig = "Kconfig"
     defconfig = ":configs/{}_defconfig_generate_{}".format(tvc, variant)
 
@@ -2063,12 +2096,24 @@ def _define_module_for_target_variant_chipset(target, variant, chipset):
         "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
     })
 
-    deps += [
+    if chipset == "qca6750" or chipset == "wlan" or chipset == "adrastea":
+        deps += [
             "//vendor/qcom/opensource/wlan/platform:{}_icnss2".format(tv),
-            "//vendor/qcom/opensource/wlan/platform:{}_cnss_prealloc".format(tv),
-            "//vendor/qcom/opensource/wlan/platform:{}_cnss_utils".format(tv),
-            "//vendor/qcom/opensource/wlan/platform:{}_cnss_nl".format(tv),
-            "//vendor/qcom/opensource/wlan/platform:wlan-platform-headers",
+        ]
+    else:
+        deps += [
+            "//vendor/qcom/opensource/wlan/platform:{}_cnss2".format(tv),
+        ]
+
+    deps = deps + [
+        "//vendor/qcom/opensource/wlan/platform:{}_cnss_prealloc".format(tv),
+        "//vendor/qcom/opensource/wlan/platform:{}_cnss_utils".format(tv),
+        "//vendor/qcom/opensource/wlan/platform:{}_cnss_nl".format(tv),
+        "//vendor/qcom/opensource/wlan/platform:wlan-platform-headers",
+    ]
+
+    if target != "lahaina" and target != "parrot" and target != "malabar":
+        deps = deps + [
             "//vendor/qcom/opensource/dataipa:include_headers",
             "//vendor/qcom/opensource/dataipa:{}_{}_ipam".format(target, variant),
         ]
@@ -2119,7 +2164,7 @@ def define_dist(target, variant, chipsets):
             mode_overrides = {"**/*": "644"},
             log = "info",
         )
-    if target == "blair" or target == "monaco":
+    if target == "bilair" or target == "monaco" or target == "bengal":
         return
     copy_to_dist_dir(
         name = "{}_all_modules_dist".format(tv),

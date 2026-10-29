@@ -5273,6 +5273,8 @@ void cm_update_session_assoc_ie(struct wlan_objmgr_psoc *psoc,
 	if (!rso_cfg->assoc_ie.ptr)
 		goto rel_vdev_ref;
 
+	cm_update_ext_cap_ie_at_source(psoc, assoc_ie);
+
 	rso_cfg->assoc_ie.len = assoc_ie->len;
 	qdf_mem_copy(rso_cfg->assoc_ie.ptr, assoc_ie->ptr, assoc_ie->len);
 rel_vdev_ref:
@@ -5326,7 +5328,7 @@ QDF_STATUS cm_start_roam_invoke(struct wlan_objmgr_psoc *psoc,
 		}
 
 		cm_req->roam_req.req.forced_roaming = true;
-		if (source == CM_ROAMING_HOST)
+		if (source == CM_ROAMING_HOST || source == CM_ROAMING_USER)
 			rso_cfg->is_forced_roaming = true;
 		source = CM_ROAMING_NUD_FAILURE;
 		goto send_evt;
@@ -5364,7 +5366,8 @@ send_evt:
 	 * information and disconnect if needed.
 	 */
 	if (source == CM_ROAMING_HOST ||
-	    source == CM_ROAMING_NUD_FAILURE)
+	    source == CM_ROAMING_NUD_FAILURE ||
+	    source == CM_ROAMING_USER)
 		rso_cfg->roam_invoke_source = source;
 
 	cm_req->roam_req.req.vdev_id = vdev_id;
@@ -5845,9 +5848,8 @@ cm_send_roam_invoke_req(struct cnx_mgr *cm_ctx, struct cm_req *req)
 					roam_invoke_req);
 
 	if (QDF_IS_STATUS_ERROR(status)) {
-		mlme_err(CM_PREFIX_FMT "No Candidate found",
+		mlme_err(CM_PREFIX_FMT "No Candidate found, send roam invoke req, fw will perform scan",
 			 CM_PREFIX_REF(vdev_id, cm_id));
-		goto roam_err;
 	}
 
 	if (wlan_cm_get_ese_assoc(pdev, vdev_id)) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1551,7 +1551,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	struct drm_plane_state *state;
 	struct sde_crtc_state *cstate;
 	struct sde_plane_state *pstate = NULL;
-	struct plane_state *pstates = NULL;
+	struct plane_state pstates[SDE_PSTATES_MAX] = { 0 };
 	struct sde_format *format;
 	struct sde_hw_ctl *ctl;
 	struct sde_hw_mixer *lm;
@@ -1573,10 +1573,6 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	ctl = mixer->hw_ctl;
 	lm = mixer->hw_lm;
 	cstate = to_sde_crtc_state(crtc->state);
-	pstates = kcalloc(SDE_PSTATES_MAX,
-			sizeof(struct plane_state), GFP_KERNEL);
-	if (!pstates)
-		return;
 
 	memset(fetch_active, 0, sizeof(fetch_active));
 	memset(zpos_cnt, 0, sizeof(zpos_cnt));
@@ -1610,7 +1606,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		format = to_sde_format(msm_framebuffer_format(pstate->base.fb));
 		if (!format) {
 			SDE_ERROR("invalid format\n");
-			goto end;
+			return;
 		}
 
 		blend_type = sde_plane_get_property(pstate,
@@ -1708,9 +1704,6 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			clear_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
 		}
 	}
-
-end:
-	kfree(pstates);
 }
 
 static void _sde_crtc_swap_mixers_for_right_partial_update(
@@ -2354,30 +2347,47 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 	}
 }
 
-static void _sde_crtc_put_frame_data_buffer(struct sde_frame_data_buffer *buf)
+/* This will put all frame data buffers from (and including) start_idx */
+static void _sde_crtc_put_frame_data_buffers_from(struct sde_crtc *sde_crtc, uint32_t start_idx)
 {
-	if (!buf)
+	struct sde_frame_data_buffer *buf;
+	int i;
+
+	if (start_idx >= SDE_FRAME_DATA_BUFFER_MAX)
 		return;
 
-	msm_gem_put_buffer(buf->gem);
-	kfree(buf);
-	buf = NULL;
+	for (i = start_idx; i < SDE_FRAME_DATA_BUFFER_MAX; i++) {
+		buf = sde_crtc->frame_data.buf[i];
+		if (!buf)
+			break;
+
+		if (buf->fb)
+			drm_framebuffer_put(buf->fb);
+		msm_gem_put_buffer(buf->gem);
+
+		kfree(buf);
+		sde_crtc->frame_data.buf[i] = NULL;
+		sde_crtc->frame_data.cnt--;
+	}
+
+	if (sde_crtc->frame_data.idx >= sde_crtc->frame_data.cnt)
+		sde_crtc->frame_data.idx = 0;
 }
 
 static int _sde_crtc_get_frame_data_buffer(struct drm_crtc *crtc, uint32_t fd)
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_frame_data_buffer *buf;
-	uint32_t cur_buf;
 
 	sde_crtc = to_sde_crtc(crtc);
-	cur_buf = sde_crtc->frame_data.cnt;
 
 	buf = kzalloc(sizeof(struct sde_frame_data_buffer), GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
-	sde_crtc->frame_data.buf[cur_buf] = buf;
+	sde_crtc->frame_data.buf[sde_crtc->frame_data.cnt] = buf;
+	sde_crtc->frame_data.cnt++;
+
 	buf->fd = fd;
 	buf->fb = drm_framebuffer_lookup(crtc->dev, NULL, fd);
 	if (!buf->fb) {
@@ -2400,6 +2410,7 @@ static void _sde_crtc_set_frame_data_buffers(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_drm_frame_data_buffers_ctrl ctrl;
+	uint32_t old_cnt;
 	int i, ret;
 
 	if (!crtc || !cstate || !usr)
@@ -2413,28 +2424,32 @@ static void _sde_crtc_set_frame_data_buffers(struct drm_crtc *crtc,
 		return;
 	}
 
+	spin_lock(&sde_crtc->frame_data_lock);
+
 	if (!ctrl.num_buffers) {
 		SDE_DEBUG("clearing frame data buffers");
+		_sde_crtc_put_frame_data_buffers_from(sde_crtc, 0);
 		goto exit;
-	} else if (ctrl.num_buffers > SDE_FRAME_DATA_BUFFER_MAX) {
-		SDE_ERROR("invalid number of buffers %d", ctrl.num_buffers);
-		return;
 	}
 
+	if (ctrl.num_buffers + sde_crtc->frame_data.cnt > SDE_FRAME_DATA_BUFFER_MAX) {
+		SDE_ERROR("invalid number of buffers %d, cur num:%d", ctrl.num_buffers,
+				sde_crtc->frame_data.cnt);
+		goto exit;
+	}
+
+	old_cnt = sde_crtc->frame_data.cnt;
 	for (i = 0; i < ctrl.num_buffers; i++) {
 		if (_sde_crtc_get_frame_data_buffer(crtc, ctrl.fds[i])) {
 			SDE_ERROR("unable to set buffer for fd %d", ctrl.fds[i]);
-			goto exit;
+			_sde_crtc_put_frame_data_buffers_from(sde_crtc, old_cnt);
+			break;
 		}
-		sde_crtc->frame_data.cnt++;
 	}
 
-	return;
 exit:
-	while (sde_crtc->frame_data.cnt--)
-		_sde_crtc_put_frame_data_buffer(
-				sde_crtc->frame_data.buf[sde_crtc->frame_data.cnt]);
-	sde_crtc->frame_data.cnt = 0;
+	spin_unlock(&sde_crtc->frame_data_lock);
+	return;
 }
 
 static void _sde_crtc_frame_data_notify(struct drm_crtc *crtc,
@@ -2471,6 +2486,8 @@ void sde_crtc_get_frame_data(struct drm_crtc *crtc)
 		return;
 
 	sde_crtc = to_sde_crtc(crtc);
+
+	spin_lock(&sde_crtc->frame_data_lock);
 	frame_data = &sde_crtc->frame_data;
 
 	if (frame_data->cnt) {
@@ -2495,6 +2512,7 @@ void sde_crtc_get_frame_data(struct drm_crtc *crtc)
 
 	if (frame_data->cnt)
 		_sde_crtc_frame_data_notify(crtc, data);
+	spin_unlock(&sde_crtc->frame_data_lock);
 }
 
 static void sde_crtc_frame_event_cb(void *data, u32 event, ktime_t ts)
@@ -2504,7 +2522,7 @@ static void sde_crtc_frame_event_cb(void *data, u32 event, ktime_t ts)
 	struct msm_drm_private *priv;
 	struct sde_crtc_frame_event *fevent;
 	struct sde_kms_frame_event_cb_data *cb_data;
-	unsigned long flags;
+	unsigned long flags = 0;
 	u32 crtc_id;
 
 	cb_data = (struct sde_kms_frame_event_cb_data *)data;
@@ -4189,8 +4207,6 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	}
 	sde_crtc->play_count++;
 
-	sde_vbif_clear_errors(sde_kms);
-
 	if (is_error) {
 		_sde_crtc_remove_pipe_flush(crtc);
 		_sde_crtc_blend_setup(crtc, old_state, false);
@@ -5565,10 +5581,11 @@ static int sde_crtc_atomic_check(struct drm_crtc *crtc,
 {
 	struct drm_device *dev;
 	struct sde_crtc *sde_crtc;
-	struct plane_state *pstates = NULL;
+	struct plane_state pstates[SDE_PSTATES_MAX];
+
 	struct drm_display_mode *mode;
 	int rc = 0;
-	struct sde_multirect_plane_states *multirect_plane = NULL;
+	struct sde_multirect_plane_states multirect_plane[SDE_MULTIRECT_PLANE_MAX];
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -5581,18 +5598,6 @@ static int sde_crtc_atomic_check(struct drm_crtc *crtc,
 	if (!state->enable || !state->active) {
 		SDE_DEBUG("crtc%d -> enable %d, active %d, skip atomic_check\n",
 				crtc->base.id, state->enable, state->active);
-		goto end;
-	}
-
-	pstates = kcalloc(SDE_PSTATES_MAX,
-			sizeof(struct plane_state), GFP_KERNEL);
-
-	multirect_plane = kcalloc(SDE_MULTIRECT_PLANE_MAX,
-			sizeof(struct sde_multirect_plane_states),
-			GFP_KERNEL);
-
-	if (!pstates || !multirect_plane) {
-		rc = -ENOMEM;
 		goto end;
 	}
 
@@ -5654,8 +5659,6 @@ static int sde_crtc_atomic_check(struct drm_crtc *crtc,
 		goto end;
 	}
 end:
-	kfree(pstates);
-	kfree(multirect_plane);
 	return rc;
 }
 
@@ -7395,6 +7398,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	mutex_init(&sde_crtc->crtc_lock);
 	spin_lock_init(&sde_crtc->spin_lock);
 	spin_lock_init(&sde_crtc->event_spin_lock);
+	spin_lock_init(&sde_crtc->frame_data_lock);
 	atomic_set(&sde_crtc->frame_pending, 0);
 
 	sde_crtc->enabled = false;

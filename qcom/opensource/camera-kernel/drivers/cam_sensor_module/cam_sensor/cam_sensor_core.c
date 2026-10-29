@@ -342,7 +342,6 @@ static int32_t cam_sensor_i2c_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 			csl_packet->header.request_id);
 		break;
 	}
-
 	case CAM_SENSOR_PACKET_OPCODE_SENSOR_RESCONFIG: {
 		CAM_DBG(CAM_SENSOR, "Received Resolution Config Buffer Cmd");
 		rc = cam_packet_util_process_generic_cmd_buffer(cmd_desc,
