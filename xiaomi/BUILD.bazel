@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
 load(":define_modules.bzl", "define_modules")
 
 package(default_visibility = ["//vendor/xiaomi/sm8450-build:__pkg__"])
+
+ddk_headers(
+    name = "xiaomi_uapi_headers",
+    hdrs = glob(["include/uapi/linux/*.h"]),
+    includes = ["include/uapi"],
+)
 
 define_modules("waipio", "perf")
