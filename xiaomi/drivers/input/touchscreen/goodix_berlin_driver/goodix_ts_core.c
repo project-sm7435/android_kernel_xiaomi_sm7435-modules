@@ -49,7 +49,7 @@ static void goodix_register_for_panel_events(struct device_node *dp,
 		return;
 	}
 
-	ts_debug("registered for panel notifications panel: 0x%x\n",
+	ts_debug("registered for panel notifications panel: %p\n",
 			active_panel);
 
 	cd->notifier_cookie = cookie;
@@ -875,7 +875,7 @@ exit:
 static int rawdata_proc_open(struct inode *inode, struct file *file)
 {
 	return single_open_size(file, rawdata_proc_show,
-			PDE_DATA(inode), PAGE_SIZE * 10);
+			pde_data(inode), PAGE_SIZE * 10);
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))

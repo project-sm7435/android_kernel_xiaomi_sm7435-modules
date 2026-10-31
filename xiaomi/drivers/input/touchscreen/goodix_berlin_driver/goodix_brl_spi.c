@@ -267,10 +267,9 @@ err_pdev:
 	return ret;
 }
 
-static int goodix_spi_remove(struct spi_device *spi)
+static void goodix_spi_remove(struct spi_device *spi)
 {
 	platform_device_unregister(goodix_pdev);
-	return 0;
 }
 
 static const struct spi_device_id spi_id_table[] = {
