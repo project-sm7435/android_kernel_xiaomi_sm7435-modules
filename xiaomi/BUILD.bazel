@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+load(":define_modules.bzl", "define_modules")
+
+package(default_visibility = ["//vendor/xiaomi/sm8450-build:__pkg__"])
+
+define_modules("waipio", "perf")
