@@ -457,7 +457,6 @@ int sde_dsc_populate_dsc_private_params(struct msm_display_dsc_info *dsc_info,
 	int slice_per_pkt, slice_per_intf;
 	int bytes_in_slice, total_bytes_per_intf;
 	u16 bpp;
-	u16 bpc;
 	u32 bytes_in_dsc_pair;
 	u32 total_bytes_in_dsc_pair;
 
@@ -501,7 +500,6 @@ int sde_dsc_populate_dsc_private_params(struct msm_display_dsc_info *dsc_info,
 		slice_per_pkt = 1;
 
 	bpp = DSC_BPP(dsc_info->config);
-	bpc = DSC_BPC(dsc_info->config);
 	bytes_in_slice = DIV_ROUND_UP(dsc_info->config.slice_width *
 			bpp, 8);
 	total_bytes_per_intf = bytes_in_slice * slice_per_intf;
@@ -516,11 +514,11 @@ int sde_dsc_populate_dsc_private_params(struct msm_display_dsc_info *dsc_info,
 	 * In NON-DATABUS-WIDEN mode, MDP always sends out 24-bit compressed data per
 	 * pclk and DSI always consumes 24-bit compressed data per pclk.
 	 */
-	if (widebus_en)
-		dsc_info->pclk_per_line = DIV_ROUND_UP(total_bytes_per_intf * 8,
-				msm_get_src_bpc(dsc_info->chroma_format, bpc));
-	else
-		dsc_info->pclk_per_line = DIV_ROUND_UP(total_bytes_per_intf * 8, 24);
+	/*
+	 * The DSI host takes compressed panels as RGB888, so it consumes 24 bits
+	 * per pclk with or without widebus, as on 5.10.
+	 */
+	dsc_info->pclk_per_line = DIV_ROUND_UP(total_bytes_per_intf * 8, 24);
 	dsc_info->bytes_in_slice = bytes_in_slice;
 	dsc_info->bytes_per_pkt = bytes_in_slice * slice_per_pkt;
 	dsc_info->pkt_per_line = slice_per_intf / slice_per_pkt;

@@ -7145,12 +7145,11 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			nondsc_modes++;
 
 		/*
-		 * Update the host_config.dst_format for compressed RGB101010 pixel format
-		 * when there is no widebus support.
+		 * Update the host_config.dst_format for compressed RGB101010 pixel
+		 * format. Done with widebus too, as 5.10 and the bootloader do.
 		 */
 		if (host->dst_format == DSI_PIXEL_FORMAT_RGB101010 &&
-				display_mode.timing.dsc_enabled &&
-				!display_mode.priv_info->widebus_support) {
+				display_mode.timing.dsc_enabled) {
 			host->dst_format = DSI_PIXEL_FORMAT_RGB888;
 			DSI_DEBUG("updated dst_format from %d to %d\n",
 					DSI_PIXEL_FORMAT_RGB101010, host->dst_format);
