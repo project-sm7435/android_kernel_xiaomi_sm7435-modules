@@ -49,6 +49,9 @@
 #define ELF_BDF_FILE_NAME_L9S_GLOBAL	"bd_l9sgl.elf"
 #define REGDB_FILE_NAME			"regdb.bin"
 #define REGDB_FILE_NAME_XIAOMI		"regdb_xiaomi.bin"
+#define BIN_BDF_FILE_NAME_N16		"bd_n16.bin"
+#define BIN_BDF_FILE_NAME_N16_GLOBAL	"bd_n16g.bin"
+#define BIN_BDF_FILE_NAME_N16_INDIA	"bd_n16i.bin"
 
 #define DEFAULT_PHY_UCODE_FILE_NAME	"phy_ucode.elf"
 #define DEFAULT_AUX_FILE_NAME		"aux_ucode.elf"
@@ -1133,9 +1136,21 @@ static int icnss_get_bdf_file_name(struct icnss_priv *priv,
 				 priv->board_id & 0xFF);
 		break;
 	case ICNSS_BDF_BIN:
-		if (priv->board_id == 0xFF)
-			snprintf(filename_tmp, filename_len, BIN_BDF_FILE_NAME);
-		else if (priv->board_id >= WLAN_BOARD_ID_INDEX)
+		if (priv->board_id == 0xFF) {
+			if (hw_platform_ver == HARDWARE_PROJECT_N16) {
+				if ((uint32_t)CountryGlobal == hw_country_ver)
+					snprintf(filename_tmp, filename_len,
+						 BIN_BDF_FILE_NAME_N16_GLOBAL);
+				else if ((uint32_t)CountryIndia == hw_country_ver)
+					snprintf(filename_tmp, filename_len,
+						 BIN_BDF_FILE_NAME_N16_INDIA);
+				else
+					snprintf(filename_tmp, filename_len,
+						 BIN_BDF_FILE_NAME_N16);
+			} else
+				snprintf(filename_tmp, filename_len,
+					 BIN_BDF_FILE_NAME);
+		} else if (priv->board_id >= WLAN_BOARD_ID_INDEX)
 			snprintf(filename_tmp, filename_len,
 				 BIN_BDF_FILE_NAME_PREFIX "%03x",
 				 priv->board_id);
