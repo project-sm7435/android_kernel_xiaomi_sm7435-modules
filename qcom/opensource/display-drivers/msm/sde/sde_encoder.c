@@ -5056,8 +5056,12 @@ end:
 	return ret;
 }
 
-/* Waits until the video mode timing engine is in the active region */
-static void _sde_encoder_vid_wait_for_active(struct sde_encoder_virt *sde_enc)
+/*
+ * Waits until the video mode timing engine is in the active region, or in
+ * its first tenth if early is set.
+ */
+static void _sde_encoder_vid_wait_for_active(struct sde_encoder_virt *sde_enc,
+		bool early)
 {
 	struct sde_encoder_phys *phys;
 	struct drm_display_mode *mode;
@@ -5073,8 +5077,11 @@ static void _sde_encoder_vid_wait_for_active(struct sde_encoder_virt *sde_enc)
 		mode = &phys->cached_mode;
 		min_ln_cnt = (mode->vtotal - mode->vsync_start) +
 			(mode->vsync_end - mode->vsync_start);
-		active_mark_region = mode->vdisplay + min_ln_cnt -
-			mode->vdisplay / 4;
+		if (early)
+			active_mark_region = min_ln_cnt + mode->vdisplay / 10;
+		else
+			active_mark_region = mode->vdisplay + min_ln_cnt -
+				mode->vdisplay / 4;
 
 		while (retry--) {
 			ln_cnt = phys->ops.get_line_count(phys);
@@ -5108,7 +5115,8 @@ static void _sde_encoder_mi_fps_gamma(struct sde_encoder_virt *sde_enc)
 	panel = c_bridge->display->panel;
 	mutex_lock(&panel->panel_lock);
 	if (dsi_panel_mi_has_fps_gamma(panel)) {
-		_sde_encoder_vid_wait_for_active(sde_enc);
+		_sde_encoder_vid_wait_for_active(sde_enc,
+				panel->mi.fps_gamma_early);
 		dsi_panel_mi_fps_gamma(panel);
 	}
 	mutex_unlock(&panel->panel_lock);

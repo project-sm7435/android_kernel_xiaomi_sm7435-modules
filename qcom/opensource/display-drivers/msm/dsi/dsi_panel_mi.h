@@ -80,6 +80,8 @@ enum dsi_panel_mi_doze {
  * @underflow_black: Show black instead of blue on video mode underflows.
  * @dfps_vfp:     <fps vfp> pairs overriding the dynamic fps front porches.
  * @dfps_vfp_count: Number of u32 in @dfps_vfp.
+ * @fps_gamma_early: Send the refresh rate gamma in the first tenth of the
+ *                active region.
  */
 struct dsi_panel_mi {
 	bool hbm_reg53;
@@ -143,6 +145,8 @@ struct dsi_panel_mi {
 	bool underflow_black;
 	u32 dfps_vfp[8];
 	int dfps_vfp_count;
+
+	bool fps_gamma_early;
 };
 
 void dsi_panel_mi_parse(struct dsi_panel *panel);

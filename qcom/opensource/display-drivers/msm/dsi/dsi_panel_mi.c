@@ -278,6 +278,8 @@ void dsi_panel_mi_parse(struct dsi_panel *panel)
 	    utils->read_u32_array(utils->data, "mi,dfps-vfp", mi->dfps_vfp,
 			mi->dfps_vfp_count))
 		mi->dfps_vfp_count = 0;
+	mi->fps_gamma_early = utils->read_bool(utils->data,
+			"mi,fps-gamma-early-active");
 }
 
 void dsi_panel_mi_parse_cmd_update(struct dsi_panel_cmd_set *set,
