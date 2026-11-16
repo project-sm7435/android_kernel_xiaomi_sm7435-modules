@@ -122,8 +122,14 @@ WLAN_PLATFORM_ROOT := $(WLAN_ROOT)/../platform
 ifeq ($(CONFIG_ARCH_PARROT), y)
 CONFIG_QCA_CLD_WLAN_PROFILE=parrot_gki_$(WLAN_PROFILE)
 
+# adrastea sits on icnss2 (SNOC), not on the PCIe cnss2 platform driver.
+# The cnss2 config sets CONFIG_BUS_AUTO_SUSPEND, i.e. FEATURE_RUNTIME_PM,
+# which the SNOC HIF bus does not implement.
+ifneq ($(WLAN_PROFILE),adrastea)
+include $(WLAN_PLATFORM_ROOT)/cnss2/parrot_gki_defconfig
+endif
+
 include \
-	$(WLAN_PLATFORM_ROOT)/cnss2/parrot_gki_defconfig \
 	$(WLAN_PLATFORM_ROOT)/cnss_genl/parrot_gki_defconfig \
 	$(WLAN_PLATFORM_ROOT)/cnss_prealloc/parrot_gki_defconfig \
 	$(WLAN_PLATFORM_ROOT)/cnss_utils/parrot_gki_defconfig
