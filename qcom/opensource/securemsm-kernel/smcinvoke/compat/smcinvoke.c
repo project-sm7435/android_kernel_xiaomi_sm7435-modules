@@ -109,6 +109,120 @@
 		+ OBJECT_COUNTS_NUM_##section(counts)); \
 		++ndxvar)
 
+/*
+ * Legacy UAPI, as used by the 5.10 vendor libminkdescriptor: 32 bit
+ * callback ids, 32 bit server fds and 16 byte arguments.
+ */
+struct smcinvoke_legacy_obj {
+	__s64 fd;
+	__s32 cb_server_fd;
+	__s32 reserved;
+};
+
+union smcinvoke_legacy_arg {
+	struct smcinvoke_buf b;
+	struct smcinvoke_legacy_obj o;
+};
+
+struct smcinvoke_legacy_cmd_req {
+	__u32 op;
+	__u32 counts;
+	__s32 result;
+	__u32 argsize;
+	__u64 args;
+};
+
+struct smcinvoke_legacy_accept {
+	__u32 has_resp;
+	__u32 txn_id;
+	__s32 result;
+	__s32 cbobj_id;
+	__u32 op;
+	__u32 counts;
+	__s32 reserved;
+	__u32 argsize;
+	__u64 buf_len;
+	__u64 buf_addr;
+};
+
+struct smcinvoke_legacy_server {
+	__u32 cb_buf_size;
+};
+
+#define SMCINVOKE_LEGACY_IOCTL_INVOKE_REQ \
+	_IOWR(SMCINVOKE_IOC_MAGIC, 1, struct smcinvoke_legacy_cmd_req)
+#define SMCINVOKE_LEGACY_IOCTL_ACCEPT_REQ \
+	_IOWR(SMCINVOKE_IOC_MAGIC, 2, struct smcinvoke_legacy_accept)
+#define SMCINVOKE_LEGACY_IOCTL_SERVER_REQ \
+	_IOWR(SMCINVOKE_IOC_MAGIC, 3, struct smcinvoke_legacy_server)
+#define SMCINVOKE_LEGACY_IOCTL_ACK_LOCAL_OBJ \
+	_IOWR(SMCINVOKE_IOC_MAGIC, 4, __s32)
+
+static_assert(sizeof(union smcinvoke_legacy_arg) == 16);
+static_assert(sizeof(struct smcinvoke_legacy_cmd_req) == 24);
+static_assert(sizeof(struct smcinvoke_legacy_accept) == 48);
+
+static inline size_t smcinvoke_user_argsize(bool legacy)
+{
+	return legacy ? sizeof(union smcinvoke_legacy_arg) :
+			sizeof(union smcinvoke_arg);
+}
+
+static void smcinvoke_arg_from_legacy(union smcinvoke_arg *dst,
+		const union smcinvoke_legacy_arg *src, bool is_obj)
+{
+	memset(dst, 0, sizeof(*dst));
+	if (is_obj) {
+		dst->o.fd = src->o.fd;
+		dst->o.cb_server_fd = src->o.cb_server_fd;
+	} else {
+		dst->b = src->b;
+	}
+}
+
+static void smcinvoke_arg_to_legacy(union smcinvoke_legacy_arg *dst,
+		const union smcinvoke_arg *src, bool is_obj)
+{
+	memset(dst, 0, sizeof(*dst));
+	if (is_obj) {
+		dst->o.fd = src->o.fd;
+		dst->o.cb_server_fd = (__s32)src->o.cb_server_fd;
+	} else {
+		dst->b = src->b;
+	}
+}
+
+/* Copy argument i of a user argument array, in either UAPI layout */
+static int smcinvoke_put_user_arg(u64 base, int i, bool legacy, bool is_obj,
+		const union smcinvoke_arg *arg)
+{
+	union smcinvoke_legacy_arg larg;
+
+	if (!legacy)
+		return copy_to_user(u64_to_user_ptr(base + i * sizeof(*arg)),
+				arg, sizeof(*arg)) ? -EFAULT : 0;
+
+	smcinvoke_arg_to_legacy(&larg, arg, is_obj);
+	return copy_to_user(u64_to_user_ptr(base + i * sizeof(larg)),
+			&larg, sizeof(larg)) ? -EFAULT : 0;
+}
+
+static int smcinvoke_get_user_arg(u64 base, int i, bool legacy, bool is_obj,
+		union smcinvoke_arg *arg)
+{
+	union smcinvoke_legacy_arg larg;
+
+	if (!legacy)
+		return copy_from_user(arg, u64_to_user_ptr(base +
+				i * sizeof(*arg)), sizeof(*arg)) ? -EFAULT : 0;
+
+	if (copy_from_user(&larg, u64_to_user_ptr(base + i * sizeof(larg)),
+			sizeof(larg)))
+		return -EFAULT;
+	smcinvoke_arg_from_legacy(arg, &larg, is_obj);
+	return 0;
+}
+
 #define TZCB_BUF_OFFSET(tzcb_req) (sizeof(tzcb_req->result) + \
 			sizeof(struct smcinvoke_msg_hdr) + \
 			sizeof(union smcinvoke_tz_args) * \
@@ -2148,16 +2262,17 @@ out:
 }
 
 static int marshal_in_tzcb_req(const struct smcinvoke_cb_txn *cb_txn,
-				struct smcinvoke_accept *user_req, int srvr_id)
+				struct smcinvoke_accept *user_req, int srvr_id,
+				bool legacy)
 {
 	int ret = 0, i = 0;
 	int32_t temp_fd = UHANDLE_NULL;
-	union smcinvoke_arg tmp_arg;
+	union smcinvoke_arg tmp_arg = {0};
 	struct smcinvoke_tzcb_req *tzcb_req = cb_txn->cb_req;
 	union smcinvoke_tz_args *tz_args = tzcb_req->args;
 	size_t tzcb_req_len = cb_txn->cb_req_bytes;
 	size_t tz_buf_offset = TZCB_BUF_OFFSET(tzcb_req);
-	size_t user_req_buf_offset = sizeof(union smcinvoke_arg) *
+	size_t user_req_buf_offset = smcinvoke_user_argsize(legacy) *
 			OBJECT_COUNTS_TOTAL(tzcb_req->hdr.counts);
 
 	if (tz_buf_offset > tzcb_req_len) {
@@ -2194,9 +2309,8 @@ static int marshal_in_tzcb_req(const struct smcinvoke_cb_txn *cb_txn,
 		}
 		tmp_arg.b.addr = user_req->buf_addr + user_req_buf_offset;
 
-		if (copy_to_user(u64_to_user_ptr
-				(user_req->buf_addr + i * sizeof(tmp_arg)),
-				&tmp_arg, sizeof(tmp_arg)) ||
+		if (smcinvoke_put_user_arg(user_req->buf_addr, i, legacy,
+				false, &tmp_arg) ||
 				copy_to_user(u64_to_user_ptr(tmp_arg.b.addr),
 				(uint8_t *)(tzcb_req) + tz_args[i].b.offset,
 				tz_args[i].b.size)) {
@@ -2219,9 +2333,8 @@ static int marshal_in_tzcb_req(const struct smcinvoke_cb_txn *cb_txn,
 		}
 		tmp_arg.b.addr = user_req->buf_addr + user_req_buf_offset;
 
-		if (copy_to_user(u64_to_user_ptr
-				(user_req->buf_addr + i * sizeof(tmp_arg)),
-				&tmp_arg, sizeof(tmp_arg))) {
+		if (smcinvoke_put_user_arg(user_req->buf_addr, i, legacy,
+				false, &tmp_arg)) {
 			ret = -EFAULT;
 			goto out;
 		}
@@ -2243,9 +2356,8 @@ static int marshal_in_tzcb_req(const struct smcinvoke_cb_txn *cb_txn,
 			ret = -EINVAL;
 			goto out;
 		}
-		if (copy_to_user(u64_to_user_ptr
-				(user_req->buf_addr + i * sizeof(tmp_arg)),
-				&tmp_arg, sizeof(tmp_arg))) {
+		if (smcinvoke_put_user_arg(user_req->buf_addr, i, legacy,
+				true, &tmp_arg)) {
 			ret = -EFAULT;
 			goto out;
 		}
@@ -2258,7 +2370,7 @@ out:
 
 static int marshal_out_tzcb_req(const struct smcinvoke_accept *user_req,
 		struct smcinvoke_cb_txn *cb_txn,
-		struct file **arr_filp)
+		struct file **arr_filp, bool legacy)
 {
 	int ret = -EINVAL, i = 0;
 	int32_t tzhandles_to_release[OBJECT_COUNTS_MAX_OO] = {0};
@@ -2302,9 +2414,8 @@ static int marshal_out_tzcb_req(const struct smcinvoke_accept *user_req,
 	FOR_ARGS(i, tzcb_req->hdr.counts, BO) {
 		union smcinvoke_arg tmp_arg;
 
-		if (copy_from_user((uint8_t *)&tmp_arg, u64_to_user_ptr(
-				user_req->buf_addr + i * sizeof(union smcinvoke_arg)),
-				sizeof(union smcinvoke_arg))) {
+		if (smcinvoke_get_user_arg(user_req->buf_addr, i, legacy,
+				false, &tmp_arg)) {
 			ret = -EFAULT;
 			goto out;
 		}
@@ -2327,9 +2438,8 @@ static int marshal_out_tzcb_req(const struct smcinvoke_accept *user_req,
 	FOR_ARGS(i, tzcb_req->hdr.counts, OO) {
 		union smcinvoke_arg tmp_arg;
 
-		if (copy_from_user((uint8_t *)&tmp_arg, u64_to_user_ptr(
-				user_req->buf_addr + i * sizeof(union smcinvoke_arg)),
-				sizeof(union smcinvoke_arg))) {
+		if (smcinvoke_get_user_arg(user_req->buf_addr, i, legacy,
+				true, &tmp_arg)) {
 			ret = -EFAULT;
 			goto out;
 		}
@@ -2557,6 +2667,18 @@ static long process_server_req(struct file *filp, unsigned int cmd,
 	struct smcinvoke_server server_req = {0};
 	struct smcinvoke_server_info *server_info = NULL;
 
+	if (cmd == SMCINVOKE_LEGACY_IOCTL_SERVER_REQ) {
+		struct smcinvoke_legacy_server legacy_req = {0};
+
+		if (copy_from_user(&legacy_req, (void __user *)(uintptr_t)arg,
+				sizeof(legacy_req))) {
+			pr_err("copying server request from user failed\n");
+			return -EFAULT;
+		}
+		server_req.cb_buf_size = legacy_req.cb_buf_size;
+		goto create_server;
+	}
+
 	if (_IOC_SIZE(cmd) != sizeof(server_req)) {
 		pr_err("invalid command size received for server request\n");
 		return -EINVAL;
@@ -2567,6 +2689,7 @@ static long process_server_req(struct file *filp, unsigned int cmd,
 		pr_err("copying server request from user failed\n");
 		return -EFAULT;
 	}
+create_server:
 	server_info = kzalloc(sizeof(*server_info), GFP_KERNEL);
 	if (!server_info)
 		return -ENOMEM;
@@ -2604,18 +2727,40 @@ static long process_accept_req(struct file *filp, unsigned int cmd,
 	int ret = -1;
 	struct smcinvoke_file_data *server_obj = filp->private_data;
 	struct smcinvoke_accept user_args = {0};
+	struct smcinvoke_legacy_accept legacy_args = {0};
 	struct smcinvoke_cb_txn *cb_txn = NULL;
 	struct smcinvoke_server_info *server_info = NULL;
+	bool legacy = (cmd == SMCINVOKE_LEGACY_IOCTL_ACCEPT_REQ);
 
-	if (_IOC_SIZE(cmd) != sizeof(struct smcinvoke_accept)) {
-		pr_err("command size invalid for accept request\n");
-		return -EINVAL;
-	}
+	if (legacy) {
+		if (copy_from_user(&legacy_args, (void __user *)arg,
+				sizeof(legacy_args))) {
+			pr_err("copying accept request from user failed\n");
+			return -EFAULT;
+		}
+		user_args.has_resp = legacy_args.has_resp;
+		user_args.txn_id = legacy_args.txn_id;
+		user_args.result = legacy_args.result;
+		user_args.cbobj_id = legacy_args.cbobj_id;
+		user_args.op = legacy_args.op;
+		user_args.counts = legacy_args.counts;
+		user_args.reserved = legacy_args.reserved;
+		user_args.buf_len = legacy_args.buf_len;
+		user_args.buf_addr = legacy_args.buf_addr;
+		user_args.argsize = (legacy_args.argsize ==
+				sizeof(union smcinvoke_legacy_arg)) ?
+				sizeof(union smcinvoke_arg) : 0;
+	} else {
+		if (_IOC_SIZE(cmd) != sizeof(struct smcinvoke_accept)) {
+			pr_err("command size invalid for accept request\n");
+			return -EINVAL;
+		}
 
-	if (copy_from_user(&user_args, (void __user *)arg,
-			sizeof(struct smcinvoke_accept))) {
-		pr_err("copying accept request from user failed\n");
-		return -EFAULT;
+		if (copy_from_user(&user_args, (void __user *)arg,
+				sizeof(struct smcinvoke_accept))) {
+			pr_err("copying accept request from user failed\n");
+			return -EFAULT;
+		}
 	}
 
 	if (user_args.argsize != sizeof(union smcinvoke_arg)) {
@@ -2669,7 +2814,7 @@ static long process_accept_req(struct file *filp, unsigned int cmd,
 			goto start_waiting_for_requests;
 		}
 		ret = marshal_out_tzcb_req(&user_args, cb_txn,
-				cb_txn->filp_to_release);
+				cb_txn->filp_to_release, legacy);
 		/*
 		 * if client did not set error and we get error locally,
 		 * we return local error to TA
@@ -2740,7 +2885,7 @@ start_waiting_for_requests:
 		if (cb_txn) {
 			cb_txn->state = SMCINVOKE_REQ_PROCESSING;
 			ret = marshal_in_tzcb_req(cb_txn, &user_args,
-					server_obj->server_id);
+					server_obj->server_id, legacy);
 			if (ret) {
 				pr_err("failed to marshal in the callback request\n");
 				cb_txn->cb_req->result = OBJECT_ERROR_UNAVAIL;
@@ -2759,8 +2904,26 @@ start_waiting_for_requests:
 
 			trace_process_accept_req_placed(current->pid, current->tgid);
 
-			ret = copy_to_user((void __user *)arg, &user_args,
-					sizeof(struct smcinvoke_accept));
+			if (legacy) {
+				legacy_args.has_resp = user_args.has_resp;
+				legacy_args.txn_id = (__u32)user_args.txn_id;
+				legacy_args.result = user_args.result;
+				legacy_args.cbobj_id = (__s32)user_args.cbobj_id;
+				legacy_args.op = user_args.op;
+				legacy_args.counts = user_args.counts;
+				legacy_args.reserved = user_args.reserved;
+				legacy_args.argsize =
+					sizeof(union smcinvoke_legacy_arg);
+				legacy_args.buf_len = user_args.buf_len;
+				legacy_args.buf_addr = user_args.buf_addr;
+				ret = copy_to_user((void __user *)arg,
+						&legacy_args,
+						sizeof(legacy_args));
+			} else {
+				ret = copy_to_user((void __user *)arg,
+						&user_args,
+						sizeof(struct smcinvoke_accept));
+			}
 		}
 	} while (!cb_txn);
 out:
@@ -2801,19 +2964,38 @@ static long process_invoke_req(struct file *filp, unsigned int cmd,
 	int32_t tzhandles_to_release[OBJECT_COUNTS_MAX_OO] = {0};
 	bool tz_acked = false;
 	uint32_t context_type = tzobj->context_type;
+	bool legacy = (cmd == SMCINVOKE_LEGACY_IOCTL_INVOKE_REQ);
+	struct smcinvoke_legacy_cmd_req legacy_req = {0};
+	union smcinvoke_legacy_arg *legacy_args = NULL;
+	int i = 0;
 
-	if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ &&
+	if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ && !legacy &&
 			_IOC_SIZE(cmd) != sizeof(req)) {
 		pr_err("command size for invoke req is invalid\n");
 		return -EINVAL;
 	}
+	if (legacy && context_type != SMCINVOKE_OBJ_TYPE_TZ_OBJ)
+		return -EPERM;
 
 	if (context_type != SMCINVOKE_OBJ_TYPE_TZ_OBJ &&
 			context_type != SMCINVOKE_OBJ_TYPE_TZ_OBJ_FOR_KERNEL) {
 		pr_err("invalid context_type %d\n", context_type);
 		return -EPERM;
 	}
-	if (context_type != SMCINVOKE_OBJ_TYPE_TZ_OBJ_FOR_KERNEL) {
+	if (legacy) {
+		if (copy_from_user(&legacy_req, (void __user *)arg,
+				sizeof(legacy_req))) {
+			pr_err("copying invoke req failed\n");
+			return -EFAULT;
+		}
+		req.op = legacy_req.op;
+		req.counts = legacy_req.counts;
+		req.result = legacy_req.result;
+		req.args = legacy_req.args;
+		req.argsize = (legacy_req.argsize ==
+				sizeof(union smcinvoke_legacy_arg)) ?
+				sizeof(union smcinvoke_arg) : 0;
+	} else if (context_type != SMCINVOKE_OBJ_TYPE_TZ_OBJ_FOR_KERNEL) {
 		ret = copy_from_user(&req, (void __user *)arg, sizeof(req));
 		if (ret) {
 			pr_err("copying invoke req failed\n");
@@ -2856,7 +3038,24 @@ static long process_invoke_req(struct file *filp, unsigned int cmd,
 	args_buf = kcalloc(nr_args_cnt, req.argsize, GFP_KERNEL);
 	if (!args_buf)
 		return -ENOMEM;
-	if (nr_args) {
+	if (legacy) {
+		legacy_args = kcalloc(nr_args_cnt, sizeof(*legacy_args),
+				GFP_KERNEL);
+		if (!legacy_args) {
+			ret = -ENOMEM;
+			goto out;
+		}
+	}
+	if (nr_args && legacy) {
+		if (copy_from_user(legacy_args, u64_to_user_ptr(req.args),
+				nr_args * sizeof(*legacy_args))) {
+			ret = -EFAULT;
+			goto out;
+		}
+		for (i = 0; i < nr_args; i++)
+			smcinvoke_arg_from_legacy(&args_buf[i], &legacy_args[i],
+				i >= OBJECT_COUNTS_NUM_buffers(req.counts));
+	} else if (nr_args) {
 		if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ) {
 			ret = copy_from_user(args_buf,
 					u64_to_user_ptr(req.args),
@@ -2944,7 +3143,15 @@ static long process_invoke_req(struct file *filp, unsigned int cmd,
 		 * occurs. Releasing FD from user space is much simpler than
 		 * doing here. ORing of ret is reqd not to miss past error
 		 */
-		if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ)
+		if (legacy) {
+			for (i = 0; i < nr_args; i++)
+				smcinvoke_arg_to_legacy(&legacy_args[i],
+					&args_buf[i],
+					i >= OBJECT_COUNTS_NUM_buffers(req.counts));
+			ret |= copy_to_user(u64_to_user_ptr(req.args),
+					legacy_args,
+					nr_args * sizeof(*legacy_args));
+		} else if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ)
 			ret |= copy_to_user(u64_to_user_ptr(req.args),
 					args_buf, nr_args * req.argsize);
 		else
@@ -2953,7 +3160,13 @@ static long process_invoke_req(struct file *filp, unsigned int cmd,
 
 	}
 	/* copy result of invoke op */
-	if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ) {
+	if (legacy) {
+		legacy_req.result = req.result;
+		ret |= copy_to_user((void __user *)arg, &legacy_req,
+				sizeof(legacy_req));
+		if (ret)
+			goto out;
+	} else if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ) {
 		ret |= copy_to_user((void __user *)arg, &req, sizeof(req));
 		if (ret)
 			goto out;
@@ -2976,6 +3189,7 @@ out:
 	qtee_shmbridge_free_shm(&in_shm);
 	qtee_shmbridge_free_shm(&out_shm);
 	kfree(args_buf);
+	kfree(legacy_args);
 
 	if (ret)
 		pr_err("invoke thread returning with ret = %d\n", ret);
@@ -3009,15 +3223,19 @@ static long smcinvoke_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case SMCINVOKE_IOCTL_INVOKE_REQ:
+	case SMCINVOKE_LEGACY_IOCTL_INVOKE_REQ:
 		ret = process_invoke_req(filp, cmd, arg);
 		break;
 	case SMCINVOKE_IOCTL_ACCEPT_REQ:
+	case SMCINVOKE_LEGACY_IOCTL_ACCEPT_REQ:
 		ret = process_accept_req(filp, cmd, arg);
 		break;
 	case SMCINVOKE_IOCTL_SERVER_REQ:
+	case SMCINVOKE_LEGACY_IOCTL_SERVER_REQ:
 		ret = process_server_req(filp, cmd, arg);
 		break;
 	case SMCINVOKE_IOCTL_ACK_LOCAL_OBJ:
+	case SMCINVOKE_LEGACY_IOCTL_ACK_LOCAL_OBJ:
 		ret = process_ack_local_obj(filp, cmd, arg);
 		break;
 	case SMCINVOKE_IOCTL_LOG:
