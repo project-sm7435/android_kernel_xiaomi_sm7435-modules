@@ -332,6 +332,9 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		       struct dsi_display_mode *mode,
 		       int topology_override);
 
+int dsi_panel_get_dfps_cmdsets(struct dsi_panel *panel, u32 index,
+			       struct dsi_display_mode *mode);
+
 int dsi_panel_validate_mode(struct dsi_panel *panel,
 			    struct dsi_display_mode *mode);
 

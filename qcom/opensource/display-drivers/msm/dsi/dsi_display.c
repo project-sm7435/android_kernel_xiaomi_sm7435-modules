@@ -7247,6 +7247,12 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			curr_refresh_rate = sub_mode->timing.refresh_rate;
 			sub_mode->timing.refresh_rate = dfps_caps.dfps_list[i];
 
+			rc = dsi_panel_get_dfps_cmdsets(display->panel, i, sub_mode);
+			if (rc) {
+				DSI_ERR("unable to get dfps cmdsets\n");
+				return rc;
+			}
+
 			/* Override with qsync min fps list in dfps usecases */
 			if (qsync_caps->qsync_min_fps && qsync_caps->qsync_min_fps_list_len) {
 				sub_mode->timing.qsync_min_fps = qsync_caps->qsync_min_fps_list[i];

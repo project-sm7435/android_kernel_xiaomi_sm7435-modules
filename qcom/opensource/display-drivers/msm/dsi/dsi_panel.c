@@ -4408,6 +4408,81 @@ parse_fail:
 	return rc;
 }
 
+/*
+ * Xiaomi panels keep their command sets per refresh rate under
+ * qcom,mdss-dsi-display-timings-dfps-ext-cmds (cmds@60, cmds@120, ...)
+ * and leave the timing node without any. Give each dfps sub mode the
+ * command sets of its refresh rate, as the 5.10 driver did.
+ */
+int dsi_panel_get_dfps_cmdsets(struct dsi_panel *panel, u32 index,
+			       struct dsi_display_mode *mode)
+{
+	struct device_node *ext_np, *child_np, *match = NULL;
+	struct dsi_parser_utils *utils;
+	void *utils_data;
+	char name[16];
+	u32 child_idx = 0;
+	int rc = 0;
+
+	if (!panel || !mode || !mode->priv_info)
+		return -EINVAL;
+
+	mutex_lock(&panel->panel_lock);
+	utils = &panel->utils;
+	utils_data = utils->data;
+
+	if (!utils->read_bool(utils->data, "mi,video-fps-cmdsets-flag"))
+		goto done;
+
+	ext_np = utils->get_child_by_name(utils->data,
+			"qcom,mdss-dsi-display-timings-dfps-ext-cmds");
+	if (!ext_np)
+		goto done;
+
+	snprintf(name, sizeof(name), "cmds@%u", mode->timing.refresh_rate);
+	dsi_for_each_child_node(ext_np, child_np) {
+		if (child_np->full_name && !strcmp(child_np->full_name, name)) {
+			match = child_np;
+			break;
+		}
+	}
+
+	if (!match) {
+		dsi_for_each_child_node(ext_np, child_np) {
+			if (index == child_idx++) {
+				match = child_np;
+				break;
+			}
+		}
+	}
+
+	if (!match) {
+		DSI_ERR("no dfps command sets for %u fps\n",
+			mode->timing.refresh_rate);
+		rc = -EINVAL;
+		goto done;
+	}
+
+	/* The sub mode was copied from the timing mode; use its own sets */
+	memset(mode->priv_info->cmd_sets, 0,
+	       sizeof(mode->priv_info->cmd_sets));
+
+	utils->data = match;
+	rc = dsi_panel_parse_cmd_sets(mode->priv_info, utils);
+	if (rc)
+		DSI_ERR("failed to parse %s command sets, rc=%d\n", name, rc);
+	else
+		DSI_INFO("%u fps uses %s command sets (on=%u off=%u)\n",
+			 mode->timing.refresh_rate, match->full_name,
+			 mode->priv_info->cmd_sets[DSI_CMD_SET_ON].count,
+			 mode->priv_info->cmd_sets[DSI_CMD_SET_OFF].count);
+
+done:
+	utils->data = utils_data;
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
 int dsi_panel_get_host_cfg_for_mode(struct dsi_panel *panel,
 				    struct dsi_display_mode *mode,
 				    struct dsi_host_config *config)
