@@ -7,6 +7,19 @@ LINUXINCLUDE += -I$(XIAOMI_SRC)/drivers/input/touchscreen/focaltech_3683g/focalt
 obj-m += xiaomi_touch.o
 xiaomi_touch-y := drivers/input/touchscreen/xiaomi/xiaomi_touch.o
 
+obj-m += goodix_core.o
+goodix_core-y := \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_brl_i2c.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_brl_spi.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_core.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_brl_hw.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_cfg_bin.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_utils.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_brl_fwupdate.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_gesture.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_inspect.o \
+	drivers/input/touchscreen/goodix_berlin_driver/goodix_ts_tools.o
+
 obj-m += focaltech_3683g.o
 focaltech_3683g-y := \
 	drivers/input/touchscreen/focaltech_3683g/focaltech_core.o \
