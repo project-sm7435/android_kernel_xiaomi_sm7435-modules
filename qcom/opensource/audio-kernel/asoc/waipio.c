@@ -73,6 +73,7 @@ static const char *tdm_tx_dailink_name[] = {
 
 #define  SMARTPA_MAX_NUM  3
 static int smartpa_count = 0;
+static bool smartpa_selected;
 struct snd_soc_dai_link_component smartpa_dails[SMARTPA_MAX_NUM] = {0};
 
 #define DRV_NAME "waipio-asoc-snd"
@@ -2216,6 +2217,13 @@ void msm_common_set_pdata(struct snd_soc_card *card,
 	pdata->common_pdata = common_pdata;
 }
 
+bool check_smartpa_type(const char *name)
+{
+	pr_debug("%s smartpa_type: %s\n", __func__, smartpa_type);
+	return !strcmp(smartpa_type, "none") || !strcmp(smartpa_type, name);
+}
+EXPORT_SYMBOL_GPL(check_smartpa_type);
+
 int get_smartpa_type(void)
 {
 	pr_debug("%s smartpa_num: %d \n", __func__, smartpa_num);
@@ -2453,9 +2461,16 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 		pdata->wsa_hac_enabled = 0;
 	}
 
-	if (probe_cout == 0) {
-		smartpa_dai_link_select();
+	/*
+	 * On 6.6 the machine probe can run before aw882xx registers its DAIs.
+	 * Pick the smart PA links on the first probe that has them, not just on
+	 * the first probe.
+	 */
+	if (probe_cout == 0)
 		smartpa_sysfs_init();
+	if (!smartpa_selected && smartpa_count > 0) {
+		smartpa_dai_link_select();
+		smartpa_selected = true;
 	}
 	probe_cout++;
 
