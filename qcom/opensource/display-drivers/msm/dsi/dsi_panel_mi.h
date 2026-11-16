@@ -46,6 +46,10 @@ enum dsi_panel_mi_doze {
  * @lhbm_nits:    Active local HBM brightness, 0 if off.
  * @lhbm_white:   Calibrated white gamma (register 0xD0).
  * @lhbm_white_valid: @lhbm_white was provided by the bootloader.
+ * @lhbm_63_c5:   Local HBM commands take the alpha gain in register 0x63
+ *                and the calibrated gamma in register 0xC5.
+ * @lhbm_rgb:     Calibrated white 1000 nit, green 500 nit and white 110 nit
+ *                gamma from the bootloader, 6 bytes each.
  * @esd_irq:      Interrupt of the panel error flag, 0 if not available.
  * @esd_irq_flags: Trigger flags of @esd_irq.
  * @esd_irq_enabled: @esd_irq is enabled.
@@ -100,6 +104,8 @@ struct dsi_panel_mi {
 	u32 lhbm_nits;
 	u8 lhbm_white[6];
 	bool lhbm_white_valid;
+	bool lhbm_63_c5;
+	u8 lhbm_rgb[18];
 
 	int esd_irq;
 	u32 esd_irq_flags;

@@ -67,6 +67,28 @@ static void dsi_panel_mi_parse_lhbm_white(struct dsi_panel *panel)
 	mi->lhbm_white_valid = true;
 }
 
+/*
+ * Panels with mi,local-hbm-ctrl-63-c5-reg get their calibrated local HBM
+ * gamma from the same SMEM table, without validation, as 6 byte sets of
+ * white 1000 nit, green 500 nit and white 110 nit.
+ */
+static void dsi_panel_mi_parse_lhbm_rgb(struct dsi_panel *panel)
+{
+	struct dsi_panel_mi *mi = &panel->mi;
+	size_t size;
+	u8 *table;
+
+	table = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_SW_DISPLAY_LHBM_TABLE,
+			&size);
+	if (IS_ERR_OR_NULL(table) || !size) {
+		DSI_ERR("[%s] no local hbm 0xC5 calibration, rc=%ld\n",
+				panel->name, IS_ERR(table) ? PTR_ERR(table) : 0L);
+		return;
+	}
+
+	memcpy(mi->lhbm_rgb, table, min(size, sizeof(mi->lhbm_rgb)));
+}
+
 static void dsi_panel_mi_parse_lhbm(struct dsi_panel *panel)
 {
 	struct dsi_parser_utils *utils = &panel->utils;
@@ -86,6 +108,11 @@ static void dsi_panel_mi_parse_lhbm(struct dsi_panel *panel)
 			&mi->lhbm_b2_min);
 
 	dsi_panel_mi_parse_lhbm_white(panel);
+
+	mi->lhbm_63_c5 = utils->read_bool(utils->data,
+			"mi,local-hbm-ctrl-63-c5-reg");
+	if (mi->lhbm_63_c5)
+		dsi_panel_mi_parse_lhbm_rgb(panel);
 
 	if (utils->read_string(utils->data, "mi,local-hbm-alpha-table", &name))
 		return;
@@ -551,6 +578,45 @@ static u32 dsi_panel_mi_normal_dbv(struct dsi_panel *panel)
 	return min(mi->last_bl_lvl, panel->bl_config.bl_max_level / 2);
 }
 
+/*
+ * 0x63 holds the alpha gain below DBV 327 and the DBV, which local HBM
+ * limits to 2047, above it. 0xC5 holds the white 1000 nit gamma three
+ * times. 0x51 gets the limited DBV as well.
+ */
+static void dsi_panel_mi_lhbm_63_c5(struct dsi_panel *panel,
+		enum dsi_cmd_set_type type, u32 dbv)
+{
+	struct dsi_panel_mi *mi = &panel->mi;
+	u8 reg63[4], regc5[18];
+	u16 gain;
+	int i;
+
+	if (!dbv)
+		return;
+
+	if (dbv >= ARRAY_SIZE(lhbm_alpha_gain_63)) {
+		dbv = min_t(u32, dbv, 2047);
+		reg63[0] = 0x10;
+		reg63[1] = 0x00;
+		reg63[2] = dbv >> 8;
+		reg63[3] = dbv & 0xff;
+	} else {
+		gain = lhbm_alpha_gain_63[dbv - 1];
+		reg63[0] = gain >> 8;
+		reg63[1] = gain & 0xff;
+		reg63[2] = 0x01;
+		reg63[3] = 0x47;
+	}
+
+	for (i = 0; i < 3; i++)
+		memcpy(&regc5[i * 6], mi->lhbm_rgb, 6);
+
+	dsi_panel_mi_update_param(panel, type, MIPI_DCS_SET_DISPLAY_BRIGHTNESS,
+			dbv);
+	dsi_panel_mi_update_cmd_set(panel, type, 0x63, reg63, sizeof(reg63));
+	dsi_panel_mi_update_cmd_set(panel, type, 0xc5, regc5, sizeof(regc5));
+}
+
 static int dsi_panel_mi_lhbm_on(struct dsi_panel *panel)
 {
 	struct dsi_panel_mi *mi = &panel->mi;
@@ -588,6 +654,9 @@ static int dsi_panel_mi_lhbm_on(struct dsi_panel *panel)
 	if (mi->lhbm_white_valid)
 		dsi_panel_mi_update_cmd_set(panel, type, 0xd0, mi->lhbm_white,
 				sizeof(mi->lhbm_white));
+
+	if (mi->lhbm_63_c5)
+		dsi_panel_mi_lhbm_63_c5(panel, type, dbv);
 
 	rc = dsi_panel_tx_cmd_set(panel, type);
 	if (rc)
