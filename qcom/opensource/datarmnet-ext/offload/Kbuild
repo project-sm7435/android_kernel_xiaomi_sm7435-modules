@@ -1,3 +1,10 @@
+DATARMNET_EXT_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(RMNET_CORE_INC_DIR),)
+RMNET_CORE_INC_DIR := $(DATARMNET_EXT_SRC)/../../datarmnet/core
+endif
+RMNET_CORE_INC_DIR := $(if $(filter /%,$(RMNET_CORE_INC_DIR)),$(RMNET_CORE_INC_DIR),$(srctree)/$(RMNET_CORE_INC_DIR))
+KBUILD_EXTRA_SYMBOLS += $(RMNET_CORE_INC_DIR)/Module.symvers
+
 obj-m += rmnet_offload.o
 #Need core headers
 ccflags-y := -I$(RMNET_CORE_INC_DIR) \

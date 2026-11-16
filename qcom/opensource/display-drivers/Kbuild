@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+DISPLAY_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
 ifeq ($(DISPLAY_ROOT),)
-DISPLAY_ROOT=$(srctree)/techpack/display
+DISPLAY_ROOT := $(DISPLAY_SRC)
 endif
+DISPLAY_ROOT := $(if $(filter /%,$(DISPLAY_ROOT)),$(DISPLAY_ROOT),$(srctree)/$(DISPLAY_ROOT))
 
 LINUXINCLUDE    += \
 		   -I$(DISPLAY_ROOT)/include/uapi/display \

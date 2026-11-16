@@ -270,8 +270,8 @@ audio_modules.register(
     path = ASOC_CODECS_PATH,
     config_option = "CONFIG_SND_SOC_MSM_HDMI_CODEC_RX",
     srcs = ["msm_hdmi_codec_rx.c"],
-    deps = ["//vendor/xiaomi/sm8450-modules/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
-            "//vendor/xiaomi/sm8450-modules/qcom/opensource/mm-drivers/msm_ext_display:msm_ext_display_headers",
+    deps = ["//vendor/xiaomi/sm7435-modules/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
+            "//vendor/xiaomi/sm7435-modules/qcom/opensource/mm-drivers/msm_ext_display:msm_ext_display_headers",
 	],
 )
 audio_modules.register(
@@ -463,4 +463,23 @@ audio_modules.register(
     path = ASOC_CODECS_PATH + "/wcd939x",
     config_option = "CONFIG_SND_SOC_WCD939X_SLAVE",
     srcs = ["wcd939x-slave.c"]
+)
+# >>>> AW882XX / PA_COMBINE MODULE <<<<
+audio_modules.register(
+    name = "aw882xx_dlkm",
+    path = ASOC_CODECS_PATH + "/pa_combine",
+    config_option = "CONFIG_SND_SOC_AW882XX",
+    srcs = [
+        "src/aw882xx/aw882xx.c",
+        "src/aw882xx/aw882xx_bin_parse.c",
+        "src/aw882xx/aw882xx_calib.c",
+        "src/aw882xx/aw882xx_device.c",
+        "src/aw882xx/aw882xx_dsp.c",
+        "src/aw882xx/aw882xx_init.c",
+        "src/aw882xx/aw882xx_monitor.c",
+        "src/aw882xx/aw882xx_spin.c",
+        "src/fs19xx/fsm_core.c",
+        "src/fs19xx/fs1958.c",
+        "src/fs19xx/fsm_i2c.c",
+    ],
 )

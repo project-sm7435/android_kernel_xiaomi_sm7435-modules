@@ -1,3 +1,9 @@
+MMRM_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(MMRM_ROOT),)
+MMRM_ROOT := $(MMRM_SRC)
+endif
+MMRM_ROOT := $(if $(filter /%,$(MMRM_ROOT)),$(MMRM_ROOT),$(srctree)/$(MMRM_ROOT))
+
 include $(MMRM_ROOT)/config/waipiommrm.conf
 LINUXINCLUDE += -include $(MMRM_ROOT)/config/waipiommrmconf.h
 

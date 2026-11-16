@@ -1,3 +1,9 @@
+DSP_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(DSP_ROOT),)
+DSP_ROOT := $(DSP_SRC)
+endif
+DSP_ROOT := $(if $(filter /%,$(DSP_ROOT)),$(DSP_ROOT),$(srctree)/$(DSP_ROOT))
+
 # ported from Android.mk
 $(info within KBUILD file KBUILD_EXTRA_SYMBOLS = $(KBUILD_EXTRA_SYMBOLS))
 

@@ -1,4 +1,13 @@
 
+TOUCH_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(TOUCH_ROOT),)
+TOUCH_ROOT := $(TOUCH_SRC)
+endif
+TOUCH_ROOT := $(if $(filter /%,$(TOUCH_ROOT)),$(TOUCH_ROOT),$(srctree)/$(TOUCH_ROOT))
+
+ccflags-y += -Wno-error=frame-larger-than
+subdir-ccflags-y += -Wno-error=frame-larger-than
+
 KDIR := $(TOP)/kernel_platform/common
 
 ifeq ($(CONFIG_ARCH_VIENNA), y)

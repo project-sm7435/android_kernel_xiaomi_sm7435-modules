@@ -1,3 +1,12 @@
+BT_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(BT_ROOT),)
+BT_ROOT := $(BT_SRC)
+endif
+BT_ROOT := $(if $(filter /%,$(BT_ROOT)),$(BT_ROOT),$(srctree)/$(BT_ROOT))
+
+subdir-ccflags-y += -I$(BT_ROOT)/include
+subdir-ccflags-y += -I$(BT_ROOT)/../wlan/platform/inc
+
 ifeq ($(CONFIG_ARCH_PARROT), y)
 export CONFIG_MSM_BT_POWER := m
 export CONFIG_BTFM_SLIM := m

@@ -1,8 +1,24 @@
+EVA_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(EVA_ROOT),)
+EVA_ROOT := $(EVA_SRC)/..
+endif
+EVA_ROOT := $(if $(filter /%,$(EVA_ROOT)),$(EVA_ROOT),$(srctree)/$(EVA_ROOT))
+
+KBUILD_EXTRA_SYMBOLS += $(EVA_ROOT)/../synx-kernel/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(EVA_ROOT)/../mmrm-driver/Module.symvers
+
+ccflags-y += -Wno-error=frame-larger-than
+
 LINUXINCLUDE    += -I$(EVA_ROOT)/include \
                    -I$(EVA_ROOT)/include/uapi \
-				   -I$(EVA_ROOT)/include/uapi/eva
+                   -I$(EVA_ROOT)/include/uapi/eva \
+                   -I$(EVA_ROOT)/../synx-kernel/include \
+                   -I$(EVA_ROOT)/../synx-kernel/include/uapi \
+                   -I$(EVA_ROOT)/../synx-kernel/include/uapi/synx/media \
+                   -I$(EVA_ROOT)/../dsp-kernel/include \
+                   -I$(EVA_ROOT)/../dsp-kernel/include/uapi
 
-ccflags-y += -I$(srctree)/drivers/media/platform/msm/synx/
+ccflags-y += -I$(EVA_ROOT)/../synx-kernel/msm/synx -I$(srctree)/drivers/media/platform/msm/synx/
 
 # add flag to compile mmrm actual implementatio instead of stub version.
 # to follow up with mmrm team if techpack users need to define this for long term?

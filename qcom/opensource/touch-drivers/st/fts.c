@@ -4583,7 +4583,7 @@ skip_to_power_gpio_setup:
 	/* get touch type */
 	info->is_primary = (fts_get_touch_type(dp) == PRIMARY_TOUCH_IDX) ? true : false;
 
-#if defined(CONFIG_FB)
+#if !defined(CONFIG_DRM) && defined(CONFIG_FB)
 	info->fb_notifier = fts_noti_block;
 #endif
 

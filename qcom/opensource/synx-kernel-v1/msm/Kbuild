@@ -1,7 +1,13 @@
+SYNX_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(SYNX_ROOT),)
+SYNX_ROOT := $(SYNX_SRC)/..
+endif
+SYNX_ROOT := $(if $(filter /%,$(SYNX_ROOT)),$(SYNX_ROOT),$(srctree)/$(SYNX_ROOT))
+
 LINUXINCLUDE    += -I$(SYNX_ROOT)/include \
                    -I$(SYNX_ROOT)/include/uapi \
 		   -I$(SYNX_ROOT)/include/uapi/synx
-ccflags-y += -I$(SYNX_ROOT)/msm/synx/
+ccflags-y += -I$(SYNX_SRC)/synx/
 
 # ported from Android.mk
 $(info within KBUILD file KBUILD_EXTRA_SYMBOLS = $(KBUILD_EXTRA_SYMBOLS))
@@ -28,12 +34,19 @@ CONFIG_MSM_GLOBAL_SYNX := y
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_PARROT), y)
+KBUILD_CPPFLAGS += -DCONFIG_MSM_GLOBAL_SYNX
+CONFIG_MSM_GLOBAL_SYNX := y
+endif
+
 ifeq ($(CONFIG_MSM_GLOBAL_SYNX_V2), y)
 obj-m += synx/ipclite.o
 obj-m += synx-driver.o
 synx-driver-objs := synx/synx_v2.o synx/synx_global_v2.o synx/synx_util_v2.o synx/synx_debugfs_v2.o
 else
+ifneq ($(CONFIG_ARCH_PARROT), y)
 obj-m += synx/ipclite.o
+endif
 obj-m += synx/qcom_ipc_lite.o
 obj-m += synx-driver.o
 synx-driver-objs := synx/synx.o synx/synx_util.o synx/synx_debugfs.o

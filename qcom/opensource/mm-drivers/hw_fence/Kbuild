@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+MSM_HW_FENCE_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(MSM_HW_FENCE_ROOT),)
+MSM_HW_FENCE_ROOT := $(MSM_HW_FENCE_SRC)/../
+endif
+MSM_HW_FENCE_ROOT := $(if $(filter /%,$(MSM_HW_FENCE_ROOT)),$(MSM_HW_FENCE_ROOT),$(srctree)/$(MSM_HW_FENCE_ROOT))
+
 KDIR := $(TOP)/kernel_platform/msm-kernel
 include $(MSM_HW_FENCE_ROOT)/config/kalamammdrivers.conf
 LINUXINCLUDE += -include $(MSM_HW_FENCE_ROOT)/config/kalamammdriversconf.h \

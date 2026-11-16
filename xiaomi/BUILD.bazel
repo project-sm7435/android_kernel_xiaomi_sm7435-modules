@@ -3,7 +3,7 @@
 load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
 load(":define_modules.bzl", "define_modules")
 
-package(default_visibility = ["//vendor/xiaomi/sm8450-build:__pkg__"])
+package(default_visibility = ["//vendor/xiaomi/sm7435-build:__pkg__"])
 
 ddk_headers(
     name = "xiaomi_uapi_headers",
@@ -11,4 +11,5 @@ ddk_headers(
     includes = ["include/uapi"],
 )
 
-define_modules("waipio", "perf")
+define_modules("parrot", "perf")
+define_modules("parrot", "consolidate")

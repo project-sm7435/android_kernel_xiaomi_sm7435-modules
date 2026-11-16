@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+SYNC_FENCE_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(SYNC_FENCE_ROOT),)
+SYNC_FENCE_ROOT := $(SYNC_FENCE_SRC)/..
+endif
+SYNC_FENCE_ROOT := $(if $(filter /%,$(SYNC_FENCE_ROOT)),$(SYNC_FENCE_ROOT),$(srctree)/$(SYNC_FENCE_ROOT))
+
 KDIR := $(TOP)/kernel_platform/msm-kernel
-LINUXINCLUDE    += -I$(SYNC_FENCE_ROOT)sync_fence/include/
+LINUXINCLUDE += -I$(SYNC_FENCE_SRC)/include
+ccflags-y += -I$(SYNC_FENCE_SRC)/include
 include $(SYNC_FENCE_ROOT)/config/kalamammdrivers.conf
 LINUXINCLUDE += -include $(SYNC_FENCE_ROOT)/config/kalamammdriversconf.h
 

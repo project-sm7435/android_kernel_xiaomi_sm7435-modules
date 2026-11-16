@@ -6,8 +6,8 @@ def define_modules(target, variant):
 
     ddk_module(
         name = "{}_smem_mailbox".format(kernel_build_variant),
-        kernel_build = "//vendor/xiaomi/sm8450-kernel:{}".format(kernel_build_variant),
-        deps = ["//vendor/xiaomi/sm8450-kernel:all_headers"],
+        kernel_build = "//vendor/xiaomi/sm7435-kernel:{}".format(kernel_build_variant),
+        deps = ["//vendor/xiaomi/sm7435-kernel:all_headers"],
         srcs = [
             "smem-mailbox.c"
         ],

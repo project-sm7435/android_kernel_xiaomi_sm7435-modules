@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+SPU_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(SPU_ROOT),)
+SPU_ROOT := $(SPU_SRC)
+endif
+SPU_ROOT := $(if $(filter /%,$(SPU_ROOT)),$(SPU_ROOT),$(srctree)/$(SPU_ROOT))
 
 ifeq ($(CONFIG_QCOM_SPSS), m)
         include $(SPU_ROOT)/config/gki_spu.conf

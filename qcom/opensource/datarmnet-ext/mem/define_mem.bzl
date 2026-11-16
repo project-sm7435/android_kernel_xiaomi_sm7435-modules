@@ -17,9 +17,9 @@ def define_mem(target, variant):
             "rmnet_mem_pool.c",
             "rmnet_mem_priv.h",
         ],
-        kernel_build = "//vendor/xiaomi/sm8450-kernel:{}".format(kernel_build_variant),
+        kernel_build = "//vendor/xiaomi/sm7435-kernel:{}".format(kernel_build_variant),
         deps = [
-            "//vendor/xiaomi/sm8450-kernel:all_headers",
+            "//vendor/xiaomi/sm7435-kernel:all_headers",
         ],
         copts = ["-Wno-misleading-indentation"],
     )

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
-DATAIPADRVTOP = $(srctree)/$(src)
+DATAIPADRVTOP = $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+KBUILD_EXTRA_SYMBOLS += $(DATAIPADRVTOP)/../../../../datarmnet-ext/mem/Module.symvers
 
 #MSMs - GKI
 ifeq ($(CONFIG_ARCH_LAHAINA), y)
@@ -18,6 +19,7 @@ endif
 #MSM - Vendor SI
 ifeq ($(filter $(CONFIG_ARCH_WAIPIO) $(CONFIG_ARCH_KALAMA) $(CONFIG_ARCH_PINEAPPLE) $(CONFIG_ARCH_CLIFFS) $(CONFIG_ARCH_PARROT), y),y)
 LINUXINCLUDE    += -include $(DATAIPADRVTOP)/../../../config/dataipa_vendor.h
+LINUXINCLUDE    += -I$(DATAIPADRVTOP)/../../../../datarmnet-ext/mem
 include $(DATAIPADRVTOP)/../../../config/dataipa_GKI.conf
 ifeq ($(CONFIG_LOCALVERSION), "-gki-consolidate")
 include $(DATAIPADRVTOP)/../../../config/dataipa_GKI_consolidate.conf

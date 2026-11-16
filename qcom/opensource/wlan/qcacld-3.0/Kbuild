@@ -1,3 +1,67 @@
+WLAN_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(WLAN_ROOT),)
+WLAN_ROOT := $(realpath $(WLAN_SRC))
+ifeq ($(WLAN_ROOT),)
+WLAN_ROOT := $(shell readlink -e $(WLAN_SRC))
+endif
+ifeq ($(WLAN_ROOT),)
+WLAN_ROOT := $(WLAN_SRC)
+endif
+WLAN_ROOT := $(if $(filter /%,$(WLAN_ROOT)),$(WLAN_ROOT),$(srctree)/$(WLAN_ROOT))
+endif
+
+LOCAL_DEV_NAME := $(patsubst .%,%,$(lastword $(strip $(subst /, ,$(src)))))
+ifeq ($(LOCAL_DEV_NAME),qcacld-3.0)
+LOCAL_DEV_NAME := adrastea
+endif
+ifeq ($(LOCAL_DEV_NAME),)
+LOCAL_DEV_NAME := adrastea
+endif
+
+WLAN_PROFILE ?= $(LOCAL_DEV_NAME)
+DYNAMIC_SINGLE_CHIP ?= $(LOCAL_DEV_NAME)
+MODNAME ?= qca_cld3_$(LOCAL_DEV_NAME)
+DEVNAME ?= $(LOCAL_DEV_NAME)
+CONFIG_QCA_CLD_WLAN ?= m
+CONFIG_QCA_WIFI_ISOC ?= 0
+CONFIG_QCA_WIFI_2_0 ?= 1
+
+export KBUILD_MODPOST_WARN := 1
+
+WLAN_PLATFORM_SYMVERS := $(firstword $(wildcard \
+    $(abs_objtree)/../sm7435-modules/qcom/opensource/wlan/platform/Module.symvers \
+    $(abs_srctree)/../sm7435-modules/qcom/opensource/wlan/platform/Module.symvers \
+    $(objtree)/../sm7435-modules/qcom/opensource/wlan/platform/Module.symvers \
+    $(srctree)/../sm7435-modules/qcom/opensource/wlan/platform/Module.symvers \
+    $(CURDIR)/../sm7435-modules/qcom/opensource/wlan/platform/Module.symvers \
+    $(WLAN_ROOT)/../platform/Module.symvers \
+    ../sm7435-modules/qcom/opensource/wlan/platform/Module.symvers \
+))
+
+DATAIPA_SYMVERS := $(firstword $(wildcard \
+    $(abs_objtree)/../sm7435-modules/qcom/opensource/dataipa/drivers/platform/msm/Module.symvers \
+    $(abs_srctree)/../sm7435-modules/qcom/opensource/dataipa/drivers/platform/msm/Module.symvers \
+    $(objtree)/../sm7435-modules/qcom/opensource/dataipa/drivers/platform/msm/Module.symvers \
+    $(srctree)/../sm7435-modules/qcom/opensource/dataipa/drivers/platform/msm/Module.symvers \
+    $(CURDIR)/../sm7435-modules/qcom/opensource/dataipa/drivers/platform/msm/Module.symvers \
+    $(WLAN_ROOT)/../../dataipa/drivers/platform/msm/Module.symvers \
+    ../sm7435-modules/qcom/opensource/dataipa/drivers/platform/msm/Module.symvers \
+))
+
+ifneq ($(DATAIPA_SYMVERS),)
+override KBUILD_EXTRA_SYMBOLS += $(DATAIPA_SYMVERS)
+else
+override KBUILD_EXTRA_SYMBOLS += $(WLAN_ROOT)/../../dataipa/drivers/platform/msm/Module.symvers
+endif
+
+ifneq ($(WLAN_PLATFORM_SYMVERS),)
+override KBUILD_EXTRA_SYMBOLS += $(WLAN_PLATFORM_SYMVERS)
+else
+override KBUILD_EXTRA_SYMBOLS += $(WLAN_ROOT)/../platform/Module.symvers
+endif
+
+ccflags-y += -Wno-error=frame-larger-than
+
 # We can build either as part of a standalone Kernel build or as
 # an external module.  Determine which mechanism is being used
 ifeq ($(MODNAME),)
@@ -30,10 +94,12 @@ WLAN_PLATFORM_INC ?= $(WLAN_ROOT)/../platform/inc
 
 ifeq ($(KERNEL_BUILD), n)
 ifneq ($(ANDROID_BUILD_TOP),)
+ifeq ($(filter /%,$(WLAN_ROOT)),)
       ANDROID_BUILD_TOP_REL := $(shell python -c "import os.path; print(os.path.relpath('$(ANDROID_BUILD_TOP)'))")
       override WLAN_ROOT := $(ANDROID_BUILD_TOP_REL)/$(WLAN_ROOT)
       override WLAN_COMMON_INC := $(ANDROID_BUILD_TOP_REL)/$(WLAN_COMMON_INC)
       override WLAN_FW_API := $(ANDROID_BUILD_TOP_REL)/$(WLAN_FW_API)
+endif
 endif
 endif
 
@@ -64,6 +130,8 @@ include \
 endif
 
 include $(WLAN_ROOT)/configs/$(CONFIG_QCA_CLD_WLAN_PROFILE)_defconfig
+
+override CONFIG_QCA_CLD_WLAN := m
 
 # add configurations in WLAN_CFG_OVERRIDE
 $(foreach cfg, $(WLAN_CFG_OVERRIDE), \

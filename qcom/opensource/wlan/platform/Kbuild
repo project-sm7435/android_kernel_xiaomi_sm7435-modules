@@ -1,3 +1,11 @@
+WLAN_PLAT_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(WLAN_PLATFORM_ROOT),)
+WLAN_PLATFORM_ROOT := $(WLAN_PLAT_SRC)
+endif
+export WLAN_PLATFORM_ROOT := $(if $(filter /%,$(WLAN_PLATFORM_ROOT)),$(WLAN_PLATFORM_ROOT),$(srctree)/$(WLAN_PLATFORM_ROOT))
+
+ccflags-y += -Wno-error=frame-larger-than
+
 ifeq ($(CONFIG_ARCH_PARROT), y)
 include \
 	$(WLAN_PLATFORM_ROOT)/cnss2/parrot_gki_defconfig \

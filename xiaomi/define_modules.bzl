@@ -4,8 +4,8 @@ load("//build/kernel/kleaf:kernel.bzl", "ddk_module")
 
 def define_modules(target, variant):
     tv = "{}_{}".format(target, variant)
-    kernel_build = "//vendor/xiaomi/sm8450-kernel:{}".format(tv)
-    deps = ["//vendor/xiaomi/sm8450-kernel:all_headers"]
+    kernel_build = "//vendor/xiaomi/sm7435-kernel:{}".format(tv)
+    deps = ["//vendor/xiaomi/sm7435-kernel:all_headers"]
 
     touch = "drivers/input/touchscreen"
 
@@ -45,6 +45,38 @@ def define_modules(target, variant):
         ],
         includes = ["include/uapi"],
         out = "goodix_core.ko",
+        kernel_build = kernel_build,
+        deps = deps + [":{}_xiaomi_touch".format(tv)],
+    )
+
+    focal = touch + "/focaltech_3683g"
+
+    ddk_module(
+        name = "{}_focaltech_3683g".format(tv),
+        srcs = [focal + "/" + f for f in [
+            "focaltech_core.c",
+            "focaltech_debug.c",
+            "focaltech_esdcheck.c",
+            "focaltech_ex_fun.c",
+            "focaltech_ex_mode.c",
+            "focaltech_flash.c",
+            "focaltech_gesture.c",
+            "focaltech_point_report_check.c",
+            "focaltech_spi_v2.c",
+            "focaltech_flash/focaltech_upgrade_ft3683g.c",
+            "focaltech_flash/focaltech_upgrade_ft3681.c",
+        ]],
+        hdrs = [focal + "/" + f for f in [
+            "focaltech_common.h",
+            "focaltech_config.h",
+            "focaltech_core.h",
+            "focaltech_flash.h",
+        ]] + [
+            touch + "/xiaomi/xiaomi_touch.h",
+            "include/uapi/linux/xiaomi_touch.h",
+        ],
+        includes = ["include/uapi", focal, focal + "/focaltech_flash"],
+        out = "focaltech_3683g.ko",
         kernel_build = kernel_build,
         deps = deps + [":{}_xiaomi_touch".format(tv)],
     )

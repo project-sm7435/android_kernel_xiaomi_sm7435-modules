@@ -1,5 +1,22 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+DISPLAY_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(DISPLAY_ROOT),)
+DISPLAY_ROOT := $(DISPLAY_SRC)/..
+endif
+DISPLAY_ROOT := $(if $(filter /%,$(DISPLAY_ROOT)),$(DISPLAY_ROOT),$(srctree)/$(DISPLAY_ROOT))
+
+KERNEL_SRC ?= $(srctree)
+KERNEL_ROOT ?= $(srctree)
+
+KBUILD_EXTRA_SYMBOLS += $(DISPLAY_ROOT)/../mm-drivers/sync_fence/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(DISPLAY_ROOT)/../mm-drivers/msm_ext_display/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(DISPLAY_ROOT)/../mmrm-driver/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(DISPLAY_ROOT)/../securemsm-kernel/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(DISPLAY_ROOT)/../synx-kernel/Module.symvers
+
+ccflags-y += -Wno-error=frame-larger-than
+
 KDIR := $(TOP)/kernel_platform/msm-kernel
 
 ifeq ($(CONFIG_ARCH_WAIPIO), y)

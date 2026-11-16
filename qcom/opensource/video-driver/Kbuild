@@ -1,5 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+VIDEO_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+ifeq ($(VIDEO_ROOT),)
+VIDEO_ROOT := $(VIDEO_SRC)
+endif
+VIDEO_ROOT := $(if $(filter /%,$(VIDEO_ROOT)),$(VIDEO_ROOT),$(srctree)/$(VIDEO_ROOT))
+
+KBUILD_EXTRA_SYMBOLS += $(VIDEO_ROOT)/../mmrm-driver/Module.symvers
+
 ifneq ($(CONFIG_ARCH_MONACO), y)
 KBUILD_CPPFLAGS += -DCONFIG_MSM_MMRM=1
 endif

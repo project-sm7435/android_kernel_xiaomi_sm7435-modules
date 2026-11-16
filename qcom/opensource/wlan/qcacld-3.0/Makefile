@@ -12,8 +12,9 @@ KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
 
 ifeq ($(WLAN_ROOT),)
+WLAN_ROOT_ABS := $(shell cd $(KERNEL_SRC); readlink -e $(M))
 # WLAN_ROOT must contain an absolute path (i.e. not a relative path)
-KBUILD_OPTIONS := WLAN_ROOT=$(shell cd $(KERNEL_SRC); readlink -e $(M))
+KBUILD_OPTIONS := WLAN_ROOT=$(WLAN_ROOT_ABS)
 
 # MODNAME should be qca_cld3_wlan for helium based platform
 ifeq (qca_cld3, $(WLAN_CHIPSET))
@@ -32,9 +33,7 @@ KBUILD_EXTRA := \
     MODNAME=$(WLAN_CHIPSET)_$(LOCAL_DEV_NAME) \
     DEVNAME=$(LOCAL_DEV_NAME)
 
-KBUILD_OPTIONS += \
-    KBUILD_EXTRA_SYMBOLS=$(M)/../../../dataipa/drivers/platform/msm/Module.symvers \
-    KBUILD_EXTRA_SYMBOLS+=$(M)/../../platform/Module.symvers
+export KBUILD_MODPOST_WARN := 1
 
 #By default build for CLD
 WLAN_SELECT := CONFIG_QCA_CLD_WLAN=m

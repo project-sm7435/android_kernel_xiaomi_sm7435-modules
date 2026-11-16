@@ -1,0 +1,22 @@
+XIAOMI_SRC := $(if $(filter /%,$(src)),$(src),$(srctree)/$(src))
+LINUXINCLUDE += -I$(XIAOMI_SRC)/include/uapi
+LINUXINCLUDE += -I$(XIAOMI_SRC)/drivers/input/touchscreen/xiaomi
+LINUXINCLUDE += -I$(XIAOMI_SRC)/drivers/input/touchscreen/focaltech_3683g
+LINUXINCLUDE += -I$(XIAOMI_SRC)/drivers/input/touchscreen/focaltech_3683g/focaltech_flash
+
+obj-m += xiaomi_touch.o
+xiaomi_touch-y := drivers/input/touchscreen/xiaomi/xiaomi_touch.o
+
+obj-m += focaltech_3683g.o
+focaltech_3683g-y := \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_core.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_ex_fun.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_ex_mode.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_gesture.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_esdcheck.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_point_report_check.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_spi_v2.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_debug.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_flash.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_flash/focaltech_upgrade_ft3681.o \
+	drivers/input/touchscreen/focaltech_3683g/focaltech_flash/focaltech_upgrade_ft3683g.o

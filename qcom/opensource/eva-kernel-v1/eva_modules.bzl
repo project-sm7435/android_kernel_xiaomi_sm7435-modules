@@ -31,15 +31,15 @@ register_eva_module(
     ],
     config_deps = {
         "TARGET_SYNX_ENABLE": [
-            "//vendor/xiaomi/sm8450-modules/qcom/opensource/synx-kernel-v1:synx_headers",
-            "//vendor/xiaomi/sm8450-modules/qcom/opensource/synx-kernel-v1:%b_modules",
+            "//vendor/xiaomi/sm7435-modules/qcom/opensource/synx-kernel-v1:synx_headers",
+            "//vendor/xiaomi/sm7435-modules/qcom/opensource/synx-kernel-v1:%b_modules",
         ],
         "TARGET_MMRM_ENABLE": [
-            "//vendor/xiaomi/sm8450-modules/qcom/opensource/mmrm-driver:%b_mmrm_driver",
+            "//vendor/xiaomi/sm7435-modules/qcom/opensource/mmrm-driver:%b_mmrm_driver",
         ],
         "TARGET_DSP_ENABLE": [
-            "//vendor/xiaomi/sm8450-modules/qcom/opensource/dsp-kernel:fastrpc_headers",
-            "//vendor/xiaomi/sm8450-modules/qcom/opensource/dsp-kernel:%b_frpc-adsprpc",
+            "//vendor/xiaomi/sm7435-modules/qcom/opensource/dsp-kernel:fastrpc_headers",
+            "//vendor/xiaomi/sm7435-modules/qcom/opensource/dsp-kernel:%b_frpc-adsprpc",
         ],
     },
 )
