@@ -8,6 +8,7 @@
 #include <linux/interrupt.h>
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/soc/qcom/smem.h>
 #include <video/mipi_display.h>
 
@@ -70,7 +71,9 @@ static void dsi_panel_mi_parse_lhbm_white(struct dsi_panel *panel)
 /*
  * Panels with mi,local-hbm-ctrl-63-c5-reg get their calibrated local HBM
  * gamma from the same SMEM table, without validation, as 6 byte sets of
- * white 1000 nit, green 500 nit and white 110 nit.
+ * white 1000 nit, green 500 nit and white 110 nit. Panels with
+ * mi,local-hbm-ctrl-d1-reg take the white 1000 nit set in register 0xD1 and
+ * keep the default of their commands when the bootloader left it empty.
  */
 static void dsi_panel_mi_parse_lhbm_rgb(struct dsi_panel *panel)
 {
@@ -89,12 +92,30 @@ static void dsi_panel_mi_parse_lhbm_rgb(struct dsi_panel *panel)
 	memcpy(mi->lhbm_rgb, table, min(size, sizeof(mi->lhbm_rgb)));
 }
 
+static const struct dsi_panel_mi_alpha_table *dsi_panel_mi_find_alpha(
+		struct dsi_panel *panel, const char *prop)
+{
+	struct dsi_parser_utils *utils = &panel->utils;
+	const char *name;
+	int i;
+
+	if (utils->read_string(utils->data, prop, &name))
+		return NULL;
+
+	for (i = 0; i < ARRAY_SIZE(lhbm_alpha_tables); i++)
+		if (!strcmp(name, lhbm_alpha_tables[i].name))
+			return &lhbm_alpha_tables[i];
+
+	DSI_ERR("[%s] unknown local hbm alpha table %s\n", panel->name, name);
+	return NULL;
+}
+
 static void dsi_panel_mi_parse_lhbm(struct dsi_panel *panel)
 {
 	struct dsi_parser_utils *utils = &panel->utils;
 	struct dsi_panel_mi *mi = &panel->mi;
-	const char *name;
-	int i;
+	const struct dsi_panel_mi_alpha_table *table;
+	u32 alpha_reg[2];
 
 	mi->lhbm = utils->read_bool(utils->data, "mi,local-hbm-enabled");
 	if (!mi->lhbm)
@@ -111,32 +132,37 @@ static void dsi_panel_mi_parse_lhbm(struct dsi_panel *panel)
 
 	mi->lhbm_63_c5 = utils->read_bool(utils->data,
 			"mi,local-hbm-ctrl-63-c5-reg");
-	if (mi->lhbm_63_c5)
+	mi->lhbm_d1 = utils->read_bool(utils->data, "mi,local-hbm-ctrl-d1-reg");
+	if (mi->lhbm_63_c5 || mi->lhbm_d1)
 		dsi_panel_mi_parse_lhbm_rgb(panel);
-
-	if (utils->read_string(utils->data, "mi,local-hbm-alpha-table", &name))
-		return;
-
-	for (i = 0; i < ARRAY_SIZE(lhbm_alpha_tables); i++) {
-		if (strcmp(name, lhbm_alpha_tables[i].name))
-			continue;
-
-		mi->lhbm_alpha = lhbm_alpha_tables[i].alpha;
-		mi->lhbm_alpha_size = lhbm_alpha_tables[i].size;
-		break;
+	if (mi->lhbm_d1 && !memchr_inv(mi->lhbm_rgb, 0, 6)) {
+		DSI_INFO("[%s] no local hbm 0xD1 calibration\n", panel->name);
+		mi->lhbm_d1 = false;
 	}
 
-	if (!mi->lhbm_alpha) {
-		DSI_ERR("[%s] unknown local hbm alpha table %s\n",
-				panel->name, name);
+	table = dsi_panel_mi_find_alpha(panel, "mi,local-hbm-alpha-table");
+	if (!table)
 		return;
-	}
 
+	mi->lhbm_alpha = table->alpha;
+	mi->lhbm_alpha_size = table->size;
 	mi->lhbm_alpha_max = mi->lhbm_alpha[mi->lhbm_alpha_size - 1];
 	utils->read_u32(utils->data, "mi,local-hbm-alpha-max",
 			&mi->lhbm_alpha_max);
 	utils->read_u32(utils->data, "mi,local-hbm-alpha-or",
 			&mi->lhbm_alpha_or);
+
+	table = dsi_panel_mi_find_alpha(panel, "mi,local-hbm-alpha-hlpm-table");
+	if (table) {
+		mi->lhbm_alpha_hlpm = table->alpha;
+		mi->lhbm_alpha_hlpm_size = table->size;
+	}
+
+	if (!utils->read_u32_array(utils->data, "mi,local-hbm-alpha-reg",
+			alpha_reg, 2)) {
+		mi->lhbm_alpha_reg = alpha_reg[0];
+		mi->lhbm_alpha_offset = alpha_reg[1];
+	}
 }
 
 static void dsi_panel_mi_parse_esd(struct dsi_panel *panel)
@@ -569,6 +595,35 @@ static void dsi_panel_mi_update_param(struct dsi_panel *panel,
 	}
 }
 
+/* Writes val as 2 big endian bytes at offset of the payload of reg */
+static void dsi_panel_mi_update_param16(struct dsi_panel *panel,
+		enum dsi_cmd_set_type type, u8 reg, u32 offset, u16 val)
+{
+	struct dsi_panel_cmd_set *set =
+			&panel->cur_mode->priv_info->cmd_sets[type];
+	struct dsi_cmd_desc *cmd;
+	u8 *payload;
+	int i;
+
+	for (i = 0; i < set->update_count; i++) {
+		if (set->updates[i].reg != reg ||
+		    set->updates[i].len < offset + 2 ||
+		    set->updates[i].index >= set->count)
+			continue;
+
+		cmd = &set->cmds[set->updates[i].index];
+		payload = (u8 *)cmd->msg.tx_buf;
+		if (cmd->msg.tx_len < offset + 3 || payload[0] != reg) {
+			DSI_ERR("[%s] invalid update of 0x%02x in set %d\n",
+					panel->name, reg, type);
+			continue;
+		}
+
+		payload[1 + offset] = val >> 8;
+		payload[2 + offset] = val & 0xff;
+	}
+}
+
 /* DBV of the normal mode backlight range */
 static u32 dsi_panel_mi_normal_dbv(struct dsi_panel *panel)
 {
@@ -639,11 +694,26 @@ static int dsi_panel_mi_lhbm_on(struct dsi_panel *panel)
 			dbv);
 
 	if (mi->lhbm_alpha) {
-		alpha = dbv < mi->lhbm_alpha_size ? mi->lhbm_alpha[dbv] :
-				mi->lhbm_alpha_max;
-		dsi_panel_mi_update_param(panel, type, 0x87,
-				alpha | mi->lhbm_alpha_or);
+		if (type == DSI_CMD_SET_MI_LHBM_HLPM_WHITE_1000NIT &&
+		    mi->lhbm_alpha_hlpm)
+			alpha = dbv < mi->lhbm_alpha_hlpm_size ?
+					mi->lhbm_alpha_hlpm[dbv] :
+					mi->lhbm_alpha_hlpm[mi->lhbm_alpha_hlpm_size - 1];
+		else
+			alpha = dbv < mi->lhbm_alpha_size ? mi->lhbm_alpha[dbv] :
+					mi->lhbm_alpha_max;
+		alpha |= mi->lhbm_alpha_or;
+
+		if (mi->lhbm_alpha_reg)
+			dsi_panel_mi_update_param16(panel, type,
+					mi->lhbm_alpha_reg,
+					mi->lhbm_alpha_offset, alpha);
+		else
+			dsi_panel_mi_update_param(panel, type, 0x87, alpha);
 	}
+
+	if (mi->lhbm_d1)
+		dsi_panel_mi_update_cmd_set(panel, type, 0xd1, mi->lhbm_rgb, 6);
 
 	if (mi->lhbm_df_min)
 		dsi_panel_mi_update_param(panel, type, 0xdf,

@@ -41,6 +41,11 @@ enum dsi_panel_mi_doze {
  * @lhbm_alpha_size: Number of entries in @lhbm_alpha.
  * @lhbm_alpha_max: Alpha for backlight levels beyond @lhbm_alpha.
  * @lhbm_alpha_or: Bits always set in the alpha parameter.
+ * @lhbm_alpha_hlpm: Alpha table used instead of @lhbm_alpha while in doze.
+ * @lhbm_alpha_hlpm_size: Number of entries in @lhbm_alpha_hlpm.
+ * @lhbm_alpha_reg: Register taking the alpha as 2 bytes at the given payload
+ *                offset, instead of the whole register 0x87.
+ * @lhbm_alpha_offset: Payload offset of the alpha in @lhbm_alpha_reg.
  * @lhbm_df_min:  Minimum of register 0xDF, which is 4 times the DBV.
  * @lhbm_b2_min:  Minimum of register 0xB2, which is the DBV.
  * @lhbm_nits:    Active local HBM brightness, 0 if off.
@@ -50,6 +55,8 @@ enum dsi_panel_mi_doze {
  *                and the calibrated gamma in register 0xC5.
  * @lhbm_rgb:     Calibrated white 1000 nit, green 500 nit and white 110 nit
  *                gamma from the bootloader, 6 bytes each.
+ * @lhbm_d1:      Local HBM commands take the calibrated white 1000 nit gamma
+ *                from @lhbm_rgb in register 0xD1.
  * @esd_irq:      Interrupt of the panel error flag, 0 if not available.
  * @esd_irq_flags: Trigger flags of @esd_irq.
  * @esd_irq_enabled: @esd_irq is enabled.
@@ -101,6 +108,10 @@ struct dsi_panel_mi {
 	u32 lhbm_alpha_size;
 	u32 lhbm_alpha_max;
 	u32 lhbm_alpha_or;
+	const u16 *lhbm_alpha_hlpm;
+	u32 lhbm_alpha_hlpm_size;
+	u8 lhbm_alpha_reg;
+	u32 lhbm_alpha_offset;
 	u32 lhbm_df_min;
 	u32 lhbm_b2_min;
 	u32 lhbm_nits;
@@ -108,6 +119,7 @@ struct dsi_panel_mi {
 	bool lhbm_white_valid;
 	bool lhbm_63_c5;
 	u8 lhbm_rgb[18];
+	bool lhbm_d1;
 
 	int esd_irq;
 	u32 esd_irq_flags;
