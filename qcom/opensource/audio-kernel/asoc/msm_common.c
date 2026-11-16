@@ -43,7 +43,7 @@ struct snd_card_pdata {
 
 #define MAX_CODEC_DAI 8
 #define TDM_SLOT_WIDTH_BITS 32
-#define TDM_MAX_SLOTS 8
+#define TDM_MAX_SLOTS 4
 #define MI2S_NUM_CHANNELS 2
 
 #define SAMPLING_RATE_44P1KHZ   44100
@@ -401,6 +401,11 @@ int msm_common_snd_hw_params(struct snd_pcm_substream *substream,
 	int index = get_mi2s_tdm_auxpcm_intf_index(stream_name);
 	struct clk_cfg intf_clk_cfg;
 
+	if (get_smartpa_type() == SMARTPA_FS19XX) {
+		slot_width = 16;
+		dev_info(rtd->card->dev, "%s: SMARTPA_FS19XX slot_width overwrite to 16.\n", __func__);
+	}
+
 	dev_dbg(rtd->card->dev,
 		"%s: substream = %s  stream = %d\n",
 		__func__, substream->name, substream->stream);
@@ -423,7 +428,8 @@ int msm_common_snd_hw_params(struct snd_pcm_substream *substream,
 
 				intf_clk_cfg.clk_id = ret;
 				intf_clk_cfg.clk_freq_in_hz = rate * slot_width * slots;
-				intf_clk_cfg.clk_attri = pdata->tdm_clk_attribute[index];
+				intf_clk_cfg.clk_attri =
+					CLOCK_ATTRIBUTE_INVERT_COUPLE_NO;
 				intf_clk_cfg.clk_root = 0;
 
 				if (pdata->is_audio_hw_vote_required[index]  &&
