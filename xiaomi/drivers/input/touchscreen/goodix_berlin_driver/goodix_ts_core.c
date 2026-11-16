@@ -959,6 +959,25 @@ int goodix_check_ts_id_gpio(struct device *dev)
 {
 	int gpio, gpio_value, ret;
 	u8 match_value;
+	int det1, det2;
+
+	/*
+	 * garnet: the panel ID pins tell the Goodix and FocalTech touch
+	 * screens apart, as on garnet 5.10. Both drivers match the same node.
+	 */
+	det1 = of_get_named_gpio(dev->of_node, "xiaomi,lcd-id-gpios", 0);
+	det2 = of_get_named_gpio(dev->of_node, "xiaomi,lcd-id-gpios", 1);
+	if (det1 >= 0 && det2 >= 0) {
+		det1 = gpio_get_value(det1);
+		det2 = gpio_get_value(det2);
+		ts_info("gpio_det1 = %d, gpio_det2 = %d\n", det1, det2);
+		if (det1 && !det2) {
+			ts_info("goodix touchscreen detected");
+			return 0;
+		}
+		ts_err("goodix touchscreen not detected");
+		return -ENODEV;
+	}
 
 	ret = of_property_read_u8(dev->of_node, "goodix,ts-id-gpio-match-value",
 			&match_value);

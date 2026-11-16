@@ -68,8 +68,6 @@
 
 #define FTS_WAKELOCK_TIMEOUT 5000
 
-#define LCD_ID_DET1 (370 + 95)
-#define LCD_ID_DET2 (370 + 101)
 
 /*****************************************************************************
 * Global variable or extern global variabls/functions
@@ -2375,8 +2373,16 @@ int fts_check_ts_id_gpio(struct device *dev)
 {
 	int gpio_det1, gpio_det2;
 
-	gpio_det1 = gpio_get_value(LCD_ID_DET1);
-	gpio_det2 = gpio_get_value(LCD_ID_DET2);
+	/* garnet: the panel ID pins come from the device tree, see goodix */
+	gpio_det1 = of_get_named_gpio(dev->of_node, "xiaomi,lcd-id-gpios", 0);
+	gpio_det2 = of_get_named_gpio(dev->of_node, "xiaomi,lcd-id-gpios", 1);
+	if (gpio_det1 < 0 || gpio_det2 < 0) {
+		FTS_ERROR("no xiaomi,lcd-id-gpios, cannot tell the touch screen");
+		return -ENODEV;
+	}
+
+	gpio_det1 = gpio_get_value(gpio_det1);
+	gpio_det2 = gpio_get_value(gpio_det2);
 
 	FTS_INFO("gpio_det1 = %d, gpio_det2 = %d\n", gpio_det1, gpio_det2);
 
