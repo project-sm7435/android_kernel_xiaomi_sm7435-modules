@@ -852,4 +852,15 @@ int dsi_display_update_transfer_time(void *display, u32 transfer_time);
  */
 int dsi_display_get_panel_scan_line(void *display, u16 *scan_line, ktime_t *scan_line_ts);
 
+/**
+ * dsi_display_cell_id_register() - Expose the panel cell id and panel info
+ *				    at /sys/class/mi_display/disp-DSI-0/
+ */
+void dsi_display_cell_id_register(void);
+
+/**
+ * dsi_display_cell_id_unregister() - Remove the panel cell id and info nodes
+ */
+void dsi_display_cell_id_unregister(void);
+
 #endif /* _DSI_DISPLAY_H_ */

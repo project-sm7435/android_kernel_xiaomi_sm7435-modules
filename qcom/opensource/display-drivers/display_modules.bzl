@@ -136,6 +136,7 @@ module_entry(
             "msm/dsi/dsi_catalog.c",
             "msm/dsi/dsi_drm.c",
             "msm/dsi/dsi_display.c",
+            "msm/dsi/dsi_display_cell_id.c",
             "msm/dsi/dsi_panel.c",
             "msm/dsi/dsi_panel_mi.c",
             "msm/dsi/dsi_display_mi.c",

@@ -9155,10 +9155,13 @@ void __init dsi_display_register(void)
 	dsi_display_parse_boot_display_selection();
 
 	platform_driver_register(&dsi_display_driver);
+
+	dsi_display_cell_id_register();
 }
 
 void __exit dsi_display_unregister(void)
 {
+	dsi_display_cell_id_unregister();
 	platform_driver_unregister(&dsi_display_driver);
 	dsi_ctrl_drv_unregister();
 	dsi_phy_drv_unregister();
